@@ -1,0 +1,75 @@
+# Dev-стек HealthPage: инфраструктура + api-сервис.
+# Логические связи сервисов/очередей — в DESIGN.md §8/§8.1, здесь только развёртывание.
+# Запуск: cp .env.example .env && docker compose up -d
+#
+# Примечание: плагин rabbitmq_delayed_message_exchange (DESIGN §8.1) подключается
+# на этапе 3, когда строится топология очередей. На этапе 0 нужен лишь живой брокер.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-healthpage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-healthpage}
+      POSTGRES_DB: ${POSTGRES_DB:-healthpage}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-healthpage} -d ${POSTGRES_DB:-healthpage}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-healthpage}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-healthpage}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      HTTP_PORT: ${HTTP_PORT:-8080}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/api", "-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

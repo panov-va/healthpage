@@ -1,0 +1,26 @@
+# Секреты и локальная конфигурация — НИКОГДА не коммитим (CLAUDE.md §2, INFRASTRUCTURE §0)
+.env
+*.env
+!.env.example
+
+# Go
+/backend/bin/
+*.test
+*.out
+
+# Node / frontend
+node_modules/
+.next/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Сгенерированные типы (генерируются из openapi.yaml, см. Makefile)
+# держим под контролем версий, чтобы CI не зависел от генерации; не игнорируем
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.log

@@ -1,0 +1,1248 @@
+openapi: 3.1.0
+info:
+  title: Status Page Service API
+  version: 1.0.0
+  description: >
+    REST API сервиса страниц статуса (аналог Статусмейт / Statuspal).
+    Manual-first: статусы компонентов и инциденты управляются вручную; автоматизация
+    (входящие webhook'и от Grafana/Prometheus/PagerDuty и generic) — опциональный слой.
+    Все временные метки — ISO 8601 в UTC. Нормативный источник — DESIGN.md (разделы 5–7).
+  license:
+    name: Proprietary
+servers:
+  - url: https://api.example.ru/api/v1
+    description: Production
+  - url: http://localhost:8080/api/v1
+    description: Local dev
+
+tags:
+  - name: Public
+    description: Публичные read-only эндпоинты (без авторизации)
+  - name: Components
+    description: Управление компонентами и группами
+  - name: Incidents
+    description: Управление инцидентами
+  - name: Maintenances
+    description: Управление плановыми работами
+  - name: Subscribers
+    description: Управление подписчиками
+  - name: Tokens
+    description: API-токены
+  - name: Subscribe
+    description: Публичная подписка/отписка
+  - name: Integrations
+    description: Входящие webhook'и интеграций
+  - name: Billing
+    description: Подписки и платежи (Premium)
+  - name: Import
+    description: Миграция данных из внешних сервисов (StatusPal и др.)
+
+security:
+  - ApiToken: []
+
+paths:
+  # ─────────────────────────────── PUBLIC ───────────────────────────────
+  /pages/{slug}/summary:
+    get:
+      tags: [Public]
+      summary: Сводка страницы статуса
+      description: Общий статус, группы/компоненты с состоянием, активные инциденты и работы.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageSummary' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/components:
+    get:
+      tags: [Public]
+      summary: Публичный список компонентов
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Component' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/incidents:
+    get:
+      tags: [Public]
+      summary: История инцидентов
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/IncidentStatus' }
+        - name: impact
+          in: query
+          schema: { $ref: '#/components/schemas/IncidentImpact' }
+        - name: component_id
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/incidents/{id}:
+    get:
+      tags: [Public]
+      summary: Инцидент с лентой обновлений
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Incident' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/maintenances:
+    get:
+      tags: [Public]
+      summary: Плановые работы
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MaintenanceStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MaintenanceList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/uptime:
+    get:
+      tags: [Public]
+      summary: Uptime компонента за период
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: component_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: days
+          in: query
+          schema: { type: integer, default: 90, minimum: 1, maximum: 365 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UptimeReport' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/rss:
+    get:
+      tags: [Public]
+      summary: RSS/Atom фид инцидентов и работ
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/rss+xml:
+              schema: { type: string }
+
+  /pages/{slug}/calendar.ics:
+    get:
+      tags: [Public]
+      summary: iCal фид плановых работ
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: OK
+          content:
+            text/calendar:
+              schema: { type: string }
+
+  # ────────────────────────────── COMPONENTS ─────────────────────────────
+  /components:
+    get:
+      tags: [Components]
+      summary: Список компонентов (админ)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Component' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Components]
+      summary: Создать компонент
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComponentCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Component' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /components/{id}:
+    patch:
+      tags: [Components]
+      summary: Изменить компонент (в т.ч. ручная смена статуса)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComponentUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Component' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Components]
+      summary: Удалить компонент
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────────── INCIDENTS ─────────────────────────────
+  /incidents:
+    post:
+      tags: [Incidents]
+      summary: Создать инцидент
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncidentCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Incident' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /incidents/{id}:
+    patch:
+      tags: [Incidents]
+      summary: Изменить инцидент
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncidentPatch' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Incident' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Incidents]
+      summary: Удалить инцидент
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /incidents/{id}/updates:
+    post:
+      tags: [Incidents]
+      summary: Добавить обновление в ленту инцидента
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncidentUpdateCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentUpdate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ───────────────────────────── MAINTENANCES ────────────────────────────
+  /maintenances:
+    post:
+      tags: [Maintenances]
+      summary: Создать плановые работы
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaintenanceCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Maintenance' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /maintenances/{id}:
+    patch:
+      tags: [Maintenances]
+      summary: Изменить работы (в т.ч. смена статуса scheduled→in_progress→completed)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaintenancePatch' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Maintenance' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Maintenances]
+      summary: Удалить работы
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /maintenances/{id}/updates:
+    post:
+      tags: [Maintenances]
+      summary: Добавить обновление к работам
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaintenanceUpdateCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MaintenanceUpdate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── SUBSCRIBERS ─────────────────────────────
+  /subscribers:
+    get:
+      tags: [Subscribers]
+      summary: Список подписчиков
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Subscriber' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Subscribers]
+      summary: Добавить подписчика вручную
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscriberCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscriber' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /subscribers/{id}:
+    delete:
+      tags: [Subscribers]
+      summary: Удалить подписчика
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────────── TOKENS ────────────────────────────────
+  /tokens:
+    post:
+      tags: [Tokens]
+      summary: Создать API-токен
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TokenCreate' }
+      responses:
+        '201':
+          description: >
+            Created. Само значение токена возвращается ТОЛЬКО при создании и больше не доступно.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /tokens/{id}:
+    delete:
+      tags: [Tokens]
+      summary: Отозвать токен
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──────────────────────── PUBLIC SUBSCRIBE FLOW ────────────────────────
+  /pages/{slug}/subscribe:
+    post:
+      tags: [Subscribe]
+      summary: Подписаться (запускает double opt-in для email/telegram)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscribeRequest' }
+      responses:
+        '202':
+          description: Принято; отправлено подтверждение (для double opt-in каналов)
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /subscribe/confirm:
+    get:
+      tags: [Subscribe]
+      summary: Подтвердить подписку по токену
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Подписка подтверждена }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /unsubscribe:
+    get:
+      tags: [Subscribe]
+      summary: Отписаться по токену
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Отписка выполнена }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /pages/{slug}/subscribe/slack/start:
+    get:
+      tags: [Subscribe]
+      summary: Начать подписку Slack (редирект на Slack OAuth)
+      description: >
+        Инициирует OAuth-флоу «Add to Slack». Редиректит пользователя на Slack для выбора
+        рабочего пространства и канала. См. раздел 4.4.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '302': { description: Редирект на Slack OAuth }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /subscribe/slack/callback:
+    get:
+      tags: [Subscribe]
+      summary: OAuth callback Slack
+      description: >
+        Обрабатывает возврат от Slack OAuth, получает incoming-webhook URL выбранного канала
+        и создаёт Subscriber с channel=slack.
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema: { type: string }
+        - name: state
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Подписка Slack создана }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # ─────────────────────────── INTEGRATIONS ──────────────────────────────
+  /integrations/{integration_id}/grafana:
+    post:
+      tags: [Integrations]
+      summary: Входящий webhook Grafana
+      description: >
+        Аутентификация по подписанному payload (HMAC) либо токену интеграции.
+        Создаёт/обновляет инцидент идемпотентно по dedup-ключу из payload.
+        Формат тела намеренно не специфицирован на данном этапе (см. DESIGN.md).
+      security:
+        - IntegrationHmac: []
+      parameters:
+        - $ref: '#/components/parameters/IntegrationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '202': { description: Принято }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /integrations/{integration_id}/prometheus:
+    post:
+      tags: [Integrations]
+      summary: Входящий webhook Prometheus Alertmanager
+      security:
+        - IntegrationHmac: []
+      parameters:
+        - $ref: '#/components/parameters/IntegrationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '202': { description: Принято }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /integrations/{integration_id}/pagerduty:
+    post:
+      tags: [Integrations]
+      summary: Входящий webhook PagerDuty
+      security:
+        - IntegrationHmac: []
+      parameters:
+        - $ref: '#/components/parameters/IntegrationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '202': { description: Принято }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /integrations/{integration_id}/generic:
+    post:
+      tags: [Integrations]
+      summary: Входящий generic webhook
+      security:
+        - IntegrationHmac: []
+      parameters:
+        - $ref: '#/components/parameters/IntegrationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '202': { description: Принято }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ─────────────────────────────── BILLING ───────────────────────────────
+  /billing/subscription:
+    get:
+      tags: [Billing]
+      summary: Текущая подписка аккаунта
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /billing/checkout:
+    post:
+      tags: [Billing]
+      summary: Инициировать оплату Premium
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CheckoutRequest' }
+      responses:
+        '200':
+          description: Параметры оплаты (ссылка/виджет провайдера)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /billing/cancel:
+    post:
+      tags: [Billing]
+      summary: Отменить автопродление подписки
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /billing/payments:
+    get:
+      tags: [Billing]
+      summary: История платежей и чеков
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /billing/webhook/{provider}:
+    post:
+      tags: [Billing]
+      summary: Webhook платёжного провайдера
+      description: >
+        Уведомление о результате платежа (succeeded/failed/refunded). Подпись проверяется;
+        обработка идемпотентна по provider_payment_id. Формат тела зависит от провайдера.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/PaymentProvider' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '202': { description: Принято }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # ─────────────────────────────── IMPORT ────────────────────────────────
+  /import:
+    post:
+      tags: [Import]
+      summary: Запустить миграцию из внешнего сервиса
+      description: >
+        Асинхронный импорт (StatusPal и др.). Ставится в очередь, выполняется воркером.
+        Идемпотентен по ExternalIdMap; не рассылает уведомления подписчикам. См. раздел 4.3.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportRequest' }
+      responses:
+        '202':
+          description: Задача создана
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /import/{job_id}:
+    get:
+      tags: [Import]
+      summary: Статус задачи импорта и отчёт
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    ApiToken:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: >
+        Токен страницы передаётся как значение заголовка Authorization (без префикса Bearer),
+        совместимо с поведением Статусмейт.
+    IntegrationHmac:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: HMAC-подпись тела запроса секретом интеграции.
+
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: Идентификатор страницы (поддомен)
+      schema: { type: string }
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IntegrationId:
+      name: integration_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, default: 1, minimum: 1 }
+    PerPage:
+      name: per_page
+      in: query
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Не авторизован / неверный токен
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Ошибка валидации
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    # ── enum'ы (нормативно, синхронны с DESIGN.md) ──
+    ComponentStatus:
+      type: string
+      enum: [operational, degraded_performance, partial_outage, major_outage, under_maintenance]
+    IncidentStatus:
+      type: string
+      enum: [investigating, identified, monitoring, resolved]
+    IncidentImpact:
+      type: string
+      enum: [none, minor, major, critical]
+    MaintenanceStatus:
+      type: string
+      enum: [scheduled, in_progress, completed]
+    SubscriptionStatus:
+      type: string
+      enum: [pending, active, past_due, canceled]
+    PaymentStatus:
+      type: string
+      enum: [pending, succeeded, failed, refunded]
+    PaymentProvider:
+      type: string
+      enum: [yookassa, tinkoff, cloudpayments, robokassa]
+    BillingPlan:
+      type: string
+      enum: [free, premium]
+    BillingPeriod:
+      type: string
+      enum: [monthly, yearly]
+    ImportSource:
+      type: string
+      enum: [statuspal, statuspage, instatus, statusmate]
+    ImportRegion:
+      type: string
+      enum: [us, eu]
+    ImportStatus:
+      type: string
+      enum: [pending, running, completed, failed]
+    ImportMode:
+      type: string
+      enum: [skip, update]
+    SubscriberChannel:
+      type: string
+      enum: [email, telegram, rss, ical, webhook, max, slack]
+    SubscriberScope:
+      type: string
+      enum: [page, components]
+    OverallStatus:
+      type: string
+      enum: [operational, under_maintenance, degraded_performance, partial_outage, major_outage]
+
+    # ── общие ──
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+
+    # ── компоненты ──
+    Component:
+      type: object
+      required: [id, name, current_status, position]
+      properties:
+        id: { type: string, format: uuid }
+        group_id: { type: [string, "null"], format: uuid }
+        parent_id: { type: [string, "null"], format: uuid }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        position: { type: integer }
+        current_status: { $ref: '#/components/schemas/ComponentStatus' }
+        is_private: { type: boolean }
+        show_uptime: { type: boolean }
+        display_state: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ComponentCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        group_id: { type: string, format: uuid }
+        parent_id: { type: string, format: uuid }
+        position: { type: integer }
+        current_status:
+          $ref: '#/components/schemas/ComponentStatus'
+        is_private: { type: boolean, default: false }
+        show_uptime: { type: boolean, default: true }
+        display_state: { type: boolean, default: true }
+
+    ComponentUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        group_id: { type: [string, "null"], format: uuid }
+        position: { type: integer }
+        current_status: { $ref: '#/components/schemas/ComponentStatus' }
+        is_private: { type: boolean }
+        show_uptime: { type: boolean }
+        display_state: { type: boolean }
+
+    ComponentGroup:
+      type: object
+      required: [id, name, position]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        position: { type: integer }
+        aggregated_status: { $ref: '#/components/schemas/ComponentStatus' }
+        components:
+          type: array
+          items: { $ref: '#/components/schemas/Component' }
+
+    # ── инциденты ──
+    IncidentComponent:
+      type: object
+      required: [component_id, component_status_in_incident]
+      properties:
+        component_id: { type: string, format: uuid }
+        component_status_in_incident: { $ref: '#/components/schemas/ComponentStatus' }
+
+    IncidentUpdate:
+      type: object
+      required: [id, status, body, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        body: { type: string, description: "Текст обновления (Markdown)" }
+        notify_subscribers: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    Incident:
+      type: object
+      required: [id, title, current_status, impact, started_at]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        current_status: { $ref: '#/components/schemas/IncidentStatus' }
+        impact: { $ref: '#/components/schemas/IncidentImpact' }
+        started_at: { type: string, format: date-time }
+        resolved_at: { type: [string, "null"], format: date-time }
+        postmortem: { type: [string, "null"] }
+        is_visible: { type: boolean }
+        components:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentComponent' }
+        updates:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentUpdate' }
+
+    IncidentCreate:
+      type: object
+      required: [title, status, impact, body]
+      properties:
+        title: { type: string }
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        impact: { $ref: '#/components/schemas/IncidentImpact' }
+        body: { type: string, description: "Текст первого обновления" }
+        notify: { type: boolean, default: true }
+        started_at: { type: string, format: date-time }
+        components:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentComponent' }
+
+    IncidentPatch:
+      type: object
+      properties:
+        title: { type: string }
+        impact: { $ref: '#/components/schemas/IncidentImpact' }
+        postmortem: { type: string }
+        is_visible: { type: boolean }
+        components:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentComponent' }
+
+    IncidentUpdateCreate:
+      type: object
+      required: [status, body]
+      properties:
+        status: { $ref: '#/components/schemas/IncidentStatus' }
+        body: { type: string }
+        notify: { type: boolean, default: true }
+
+    IncidentList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Incident' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    # ── плановые работы ──
+    MaintenanceUpdate:
+      type: object
+      required: [id, body, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        body: { type: string }
+        notify_subscribers: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    Maintenance:
+      type: object
+      required: [id, title, status, scheduled_start, scheduled_end]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        status: { $ref: '#/components/schemas/MaintenanceStatus' }
+        scheduled_start: { type: string, format: date-time }
+        scheduled_end: { type: string, format: date-time }
+        started_at: { type: [string, "null"], format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+        component_ids:
+          type: array
+          items: { type: string, format: uuid }
+        updates:
+          type: array
+          items: { $ref: '#/components/schemas/MaintenanceUpdate' }
+
+    MaintenanceCreate:
+      type: object
+      required: [title, scheduled_start, scheduled_end]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        scheduled_start: { type: string, format: date-time }
+        scheduled_end: { type: string, format: date-time }
+        component_ids:
+          type: array
+          items: { type: string, format: uuid }
+        notify: { type: boolean, default: true }
+
+    MaintenancePatch:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        status: { $ref: '#/components/schemas/MaintenanceStatus' }
+        scheduled_start: { type: string, format: date-time }
+        scheduled_end: { type: string, format: date-time }
+        component_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    MaintenanceUpdateCreate:
+      type: object
+      required: [body]
+      properties:
+        body: { type: string }
+        notify: { type: boolean, default: true }
+
+    MaintenanceList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Maintenance' }
+        pagination: { $ref: '#/components/schemas/Pagination' }
+
+    # ── подписчики ──
+    Subscriber:
+      type: object
+      required: [id, channel, address, confirmed, scope]
+      properties:
+        id: { type: string, format: uuid }
+        channel: { $ref: '#/components/schemas/SubscriberChannel' }
+        address: { type: string, description: "email | telegram chat_id | webhook url" }
+        confirmed: { type: boolean }
+        scope: { $ref: '#/components/schemas/SubscriberScope' }
+        component_ids:
+          type: array
+          items: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    SubscriberCreate:
+      type: object
+      required: [channel, address]
+      properties:
+        channel: { $ref: '#/components/schemas/SubscriberChannel' }
+        address: { type: string }
+        scope: { $ref: '#/components/schemas/SubscriberScope' }
+        component_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    SubscribeRequest:
+      type: object
+      required: [channel, address]
+      properties:
+        channel: { $ref: '#/components/schemas/SubscriberChannel' }
+        address: { type: string }
+        scope:
+          $ref: '#/components/schemas/SubscriberScope'
+        component_ids:
+          type: array
+          items: { type: string, format: uuid }
+
+    # ── токены ──
+    TokenCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        scopes:
+          type: array
+          items: { type: string }
+
+    TokenCreated:
+      type: object
+      required: [id, name, token]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        token: { type: string, description: "Показывается единожды" }
+        scopes:
+          type: array
+          items: { type: string }
+
+    # ── публичная сводка ──
+    PageSummary:
+      type: object
+      required: [overall_status, groups]
+      properties:
+        overall_status: { $ref: '#/components/schemas/OverallStatus' }
+        updated_at: { type: string, format: date-time }
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/ComponentGroup' }
+        ungrouped_components:
+          type: array
+          items: { $ref: '#/components/schemas/Component' }
+        active_incidents:
+          type: array
+          items: { $ref: '#/components/schemas/Incident' }
+        active_maintenances:
+          type: array
+          items: { $ref: '#/components/schemas/Maintenance' }
+
+    UptimeReport:
+      type: object
+      required: [component_id, days, uptime_percent]
+      properties:
+        component_id: { type: string, format: uuid }
+        days: { type: integer }
+        uptime_percent: { type: number, format: float }
+        daily:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              uptime_percent: { type: number, format: float }
+
+    # ── биллинг ──
+    Subscription:
+      type: object
+      required: [id, plan, status]
+      properties:
+        id: { type: string, format: uuid }
+        plan: { $ref: '#/components/schemas/BillingPlan' }
+        billing_period: { $ref: '#/components/schemas/BillingPeriod' }
+        status: { $ref: '#/components/schemas/SubscriptionStatus' }
+        provider: { $ref: '#/components/schemas/PaymentProvider' }
+        current_period_start: { type: [string, "null"], format: date-time }
+        current_period_end: { type: [string, "null"], format: date-time }
+        cancel_at_period_end: { type: boolean }
+
+    Payment:
+      type: object
+      required: [id, amount, currency, status]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { type: number, format: float }
+        currency: { type: string, default: RUB }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        provider: { $ref: '#/components/schemas/PaymentProvider' }
+        provider_payment_id: { type: [string, "null"] }
+        receipt_id: { type: [string, "null"], description: "Ссылка на фискальный чек ОФД" }
+        created_at: { type: string, format: date-time }
+        paid_at: { type: [string, "null"], format: date-time }
+
+    CheckoutRequest:
+      type: object
+      required: [plan, billing_period]
+      properties:
+        plan: { $ref: '#/components/schemas/BillingPlan' }
+        billing_period: { $ref: '#/components/schemas/BillingPeriod' }
+
+    CheckoutResponse:
+      type: object
+      required: [payment_id]
+      properties:
+        payment_id: { type: string, format: uuid }
+        confirmation_url:
+          type: string
+          description: "URL для редиректа/виджета оплаты на стороне провайдера"
+        provider: { $ref: '#/components/schemas/PaymentProvider' }
+
+    # ── импорт ──
+    ImportRequest:
+      type: object
+      required: [source, api_key, subdomain]
+      properties:
+        source: { $ref: '#/components/schemas/ImportSource' }
+        region:
+          $ref: '#/components/schemas/ImportRegion'
+        api_key:
+          type: string
+          description: "API-ключ источника; не хранится дольше задачи"
+        subdomain:
+          type: string
+          description: "Идентификатор страницы в системе-источнике"
+        mode:
+          allOf:
+            - $ref: '#/components/schemas/ImportMode'
+          default: skip
+
+    ImportJob:
+      type: object
+      required: [id, source, status]
+      properties:
+        id: { type: string, format: uuid }
+        source: { $ref: '#/components/schemas/ImportSource' }
+        region: { $ref: '#/components/schemas/ImportRegion' }
+        status: { $ref: '#/components/schemas/ImportStatus' }
+        report:
+          type: object
+          description: "Итог: что перенесено/пропущено/ошибки"
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }

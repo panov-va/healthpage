@@ -42,7 +42,9 @@
 - [x] **1.3** Auth: регистрация/логин, сессии или JWT; хэш паролей (argon2/bcrypt). Membership с ролями.
       — ✅ JWT access+refresh (ротация/отзыв), argon2id, эндпоинты /auth/* (контракт расширен),
       middleware Bearer; sqlc введён для user/account/membership/refresh. Проверено e2e. Ждёт коммита.
-- [ ] **1.4** Store-слой (sqlc/pgx) для сущностей этапа.
+- [x] **1.4** Store-слой (sqlc/pgx) для сущностей этапа.
+      — ✅ status_pages/component_groups/components(дерево)/component_status_history: CRUD +
+      ChangeComponentStatus (история). Интеграционный тест на реальном PG. Ждёт коммита.
 - [ ] **1.5** API: CRUD страниц; CRUD компонентов и групп, включая **вложенные подкомпоненты**;
       ручная смена `current_status`. Строго по `openapi.yaml`.
 - [ ] **1.6** Логика общего статуса страницы и статуса группы (DESIGN §6): «худший» статус,

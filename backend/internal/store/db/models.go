@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type BillingPlan string
@@ -175,16 +174,16 @@ type StatusPage struct {
 	Timezone       string
 	DefaultLocale  string
 	Visibility     string
-	PasswordHash   pgtype.Text
-	CustomDomain   pgtype.Text
+	PasswordHash   *string
+	CustomDomain   *string
 	DomainVerified bool
 	Theme          []byte
-	LogoUrl        pgtype.Text
-	FaviconUrl     pgtype.Text
+	LogoUrl        *string
+	FaviconUrl     *string
 	HidePoweredBy  bool
 	SmtpConfig     []byte
-	FromEmail      pgtype.Text
-	RedirectUrl    pgtype.Text
+	FromEmail      *string
+	RedirectUrl    *string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	DeletedAt      *time.Time

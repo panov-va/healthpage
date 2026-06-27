@@ -40,7 +40,9 @@ curl http://localhost:8080/healthz   # -> 200 {"status":"ok"}
 ```
 
 Сборка/тесты/линт без docker: `make build`, `make test`, `make lint` (см. `make help`).
-Генерация типов из openapi.yaml: `make gen` (`gen-go` + `gen-ts`).
+Кодогенерация: `make gen` = типы из openapi.yaml (`gen-go` + `gen-ts`) **и** store-код из
+SQL-запросов (`gen-sqlc`). sqlc локально на macOS требует установленного бинаря `sqlc`
+(сборка через `go run` падает на cgo); на CI (linux) `go run` работает.
 
 - Требования к машине разработчика:
   - **Docker + Docker Compose** (проверено: Docker 27.x, Compose v2.29).
@@ -95,7 +97,9 @@ curl http://localhost:8080/healthz   # -> 200 {"status":"ok"}
 ### Auth
 | Переменная | Назначение |
 |-----------|-----------|
-| `JWT_SECRET` / session secret | подпись токенов/сессий |
+| `JWT_SECRET` | секрет подписи операторских access-JWT (HS256). Обязателен для запуска api |
+| `ACCESS_TTL` | TTL access-токена (Go duration, дефолт `15m`) |
+| `REFRESH_TTL` | TTL refresh-токена (Go duration, дефолт `720h` = 30 дней) |
 
 ### Email (worker-email)
 | Переменная | Назначение |

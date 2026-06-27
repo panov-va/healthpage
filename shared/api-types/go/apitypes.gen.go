@@ -11,7 +11,13 @@ import (
 
 const (
 	ApiTokenScopes        = "ApiToken.Scopes"
+	BearerAuthScopes      = "BearerAuth.Scopes"
 	IntegrationHmacScopes = "IntegrationHmac.Scopes"
+)
+
+// Defines values for AuthResultTokenType.
+const (
+	Bearer AuthResultTokenType = "Bearer"
 )
 
 // Defines values for BillingPeriod.
@@ -135,6 +141,28 @@ const (
 	SubscriptionStatusPastDue  SubscriptionStatus = "past_due"
 	SubscriptionStatusPending  SubscriptionStatus = "pending"
 )
+
+// AuthResult defines model for AuthResult.
+type AuthResult struct {
+	AccessToken string `json:"access_token"`
+
+	// ExpiresIn TTL access-токена в секундах
+	ExpiresIn    int                 `json:"expires_in"`
+	RefreshToken *string             `json:"refresh_token"`
+	TokenType    AuthResultTokenType `json:"token_type"`
+	User         AuthUser            `json:"user"`
+}
+
+// AuthResultTokenType defines model for AuthResult.TokenType.
+type AuthResultTokenType string
+
+// AuthUser defines model for AuthUser.
+type AuthUser struct {
+	Email  openapi_types.Email `json:"email"`
+	Id     openapi_types.UUID  `json:"id"`
+	Locale *string             `json:"locale,omitempty"`
+	Name   *string             `json:"name,omitempty"`
+}
 
 // BillingPeriod defines model for BillingPeriod.
 type BillingPeriod string
@@ -324,6 +352,12 @@ type IncidentUpdateCreate struct {
 	Status IncidentStatus `json:"status"`
 }
 
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	Email    openapi_types.Email `json:"email"`
+	Password string              `json:"password"`
+}
+
 // Maintenance defines model for Maintenance.
 type Maintenance struct {
 	CompletedAt    *time.Time            `json:"completed_at"`
@@ -421,6 +455,20 @@ type PaymentProvider string
 
 // PaymentStatus defines model for PaymentStatus.
 type PaymentStatus string
+
+// RefreshRequest defines model for RefreshRequest.
+type RefreshRequest struct {
+	RefreshToken *string `json:"refresh_token,omitempty"`
+}
+
+// RegisterRequest defines model for RegisterRequest.
+type RegisterRequest struct {
+	AccountName *string             `json:"account_name,omitempty"`
+	Email       openapi_types.Email `json:"email"`
+	Locale      *string             `json:"locale,omitempty"`
+	Name        *string             `json:"name,omitempty"`
+	Password    string              `json:"password"`
+}
 
 // SubscribeRequest defines model for SubscribeRequest.
 type SubscribeRequest struct {
@@ -589,6 +637,18 @@ type GetSubscribersParams struct {
 type GetUnsubscribeParams struct {
 	Token string `form:"token" json:"token"`
 }
+
+// PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
+type PostAuthLoginJSONRequestBody = LoginRequest
+
+// PostAuthLogoutJSONRequestBody defines body for PostAuthLogout for application/json ContentType.
+type PostAuthLogoutJSONRequestBody = RefreshRequest
+
+// PostAuthRefreshJSONRequestBody defines body for PostAuthRefresh for application/json ContentType.
+type PostAuthRefreshJSONRequestBody = RefreshRequest
+
+// PostAuthRegisterJSONRequestBody defines body for PostAuthRegister for application/json ContentType.
+type PostAuthRegisterJSONRequestBody = RegisterRequest
 
 // PostBillingCheckoutJSONRequestBody defines body for PostBillingCheckout for application/json ContentType.
 type PostBillingCheckoutJSONRequestBody = CheckoutRequest

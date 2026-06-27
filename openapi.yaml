@@ -16,6 +16,8 @@ servers:
     description: Local dev
 
 tags:
+  - name: Auth
+    description: Регистрация и вход оператора (JWT access + refresh)
   - name: Public
     description: Публичные read-only эндпоинты (без авторизации)
   - name: Components
@@ -37,10 +39,101 @@ tags:
   - name: Import
     description: Миграция данных из внешних сервисов (StatusPal и др.)
 
+# По умолчанию управляющие эндпоинты принимают ЛИБО операторский JWT (Bearer), ЛИБО
+# токен страницы (ApiToken). Публичные и auth-эндпоинты переопределяют это на `security: []`.
 security:
+  - BearerAuth: []
   - ApiToken: []
 
 paths:
+  # ─────────────────────────────── AUTH ───────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация оператора
+      description: Создаёт пользователя и его аккаунт. Возвращает пару токенов.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '409': { $ref: '#/components/responses/ValidationError' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход оператора
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновить access-токен по refresh-токену
+      description: >
+        Refresh-токен передаётся в httpOnly-cookie (или в теле). Старый refresh
+        инвалидируется (ротация), возвращается новая пара.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход (отзыв refresh-токена)
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '204': { description: Выполнено }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Текущий пользователь
+      description: Требует операторский JWT (Bearer).
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   # ─────────────────────────────── PUBLIC ───────────────────────────────
   /pages/{slug}/summary:
     get:
@@ -739,6 +832,13 @@ paths:
 
 components:
   securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Операторский access-токен (JWT) в заголовке `Authorization: Bearer <token>`.
+        Получается через /auth/login или /auth/refresh.
     ApiToken:
       type: apiKey
       in: header
@@ -869,6 +969,48 @@ components:
         page: { type: integer }
         per_page: { type: integer }
         total: { type: integer }
+
+    # ── аутентификация ──
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        name: { type: string }
+        account_name: { type: string }
+        locale: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token: { type: string }
+
+    AuthUser:
+      type: object
+      required: [id, email]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        locale: { type: string }
+
+    AuthResult:
+      type: object
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: [string, "null"] }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, description: TTL access-токена в секундах }
+        user: { $ref: '#/components/schemas/AuthUser' }
 
     # ── компоненты ──
     Component:

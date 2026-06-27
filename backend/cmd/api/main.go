@@ -14,7 +14,10 @@ import (
 	"time"
 
 	"github.com/healthpage/backend/internal/api"
+	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/config"
+	"github.com/healthpage/backend/internal/security"
+	"github.com/healthpage/backend/internal/store"
 )
 
 func main() {
@@ -30,9 +33,29 @@ func main() {
 		return
 	}
 
+	// Контекст инициализации зависимостей.
+	initCtx, cancelInit := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelInit()
+
+	st, err := store.New(initCtx, cfg.MustDatabaseURL())
+	if err != nil {
+		log.Fatalf("store init: %v", err)
+	}
+	defer st.Close()
+
+	tokens, err := security.NewTokenManager(cfg.JWTSecret, cfg.AccessTTL, cfg.RefreshTTL)
+	if err != nil {
+		log.Fatalf("token manager: %v (задан ли JWT_SECRET?)", err)
+	}
+	authSvc := auth.NewService(st, tokens)
+
 	srv := &http.Server{
-		Addr:              ":" + cfg.HTTPPort,
-		Handler:           api.NewRouter(),
+		Addr: ":" + cfg.HTTPPort,
+		Handler: api.NewRouter(api.Deps{
+			Auth:       authSvc,
+			Prod:       cfg.IsProd(),
+			RefreshTTL: cfg.RefreshTTL,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

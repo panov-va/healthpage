@@ -45,10 +45,13 @@ front-build: ## Собрать оба фронта
 	cd frontend/public-ssr && npm ci && npm run build
 
 ## --- Кодогенерация типов из openapi.yaml ---
-gen: gen-go gen-ts ## Сгенерировать типы для бэка и фронта
+gen: gen-go gen-ts gen-sqlc ## Сгенерировать типы (openapi) и store-код (sqlc)
 
 gen-go: ## Go-типы из openapi.yaml -> shared/api-types/go
 	bash scripts/gen-go-types.sh
 
 gen-ts: ## TS-типы из openapi.yaml -> shared/api-types/ts
 	bash scripts/gen-ts-types.sh
+
+gen-sqlc: ## Store-код из SQL-запросов -> backend/internal/store/db
+	bash scripts/gen-sqlc.sh

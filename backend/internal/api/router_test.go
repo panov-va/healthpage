@@ -3,11 +3,12 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
 func TestHealthz(t *testing.T) {
-	srv := httptest.NewServer(NewRouter())
+	srv := httptest.NewServer(NewRouter(Deps{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/healthz")
@@ -19,7 +20,7 @@ func TestHealthz(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		t.Fatalf("expected application/json, got %q", ct)
 	}
 }

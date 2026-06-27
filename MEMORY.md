@@ -10,10 +10,11 @@
 
 ## Текущий статус
 
-**Фаза:** Этап 1 (Ядро домена). Этап 0 закоммичен. Задача 1.1 (миграции) — написана и
-проверена, ждёт коммита человеком.
-**Следующий шаг:** Этап 1.2 — доменный слой `internal/domain` (сущности этапа + бизнес-правила
-статусов и иерархии). Затем 1.3 (auth) и 1.4 (store-слой, ввод sqlc).
+**Фаза:** Этап 1 (Ядро домена). Этап 0 закоммичен. Задачи 1.1 (миграции), 1.2 (домен), 1.3 (auth)
+написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 1.4 — store-слой (sqlc) для остальных сущностей (status_pages,
+component_groups, components, component_status_history). Базовый sqlc уже введён в 1.3
+(users/accounts/memberships/refresh_tokens) — 1.4 расширяет запросы. Затем 1.5 (API CRUD).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -84,6 +85,49 @@
 
 ## Что в работе
 
+**Этап 1.3 — аутентификация оператора (написано и проверено e2e, ждёт коммита человеком):**
+- Решения человека: **JWT access+refresh** (refresh в httpOnly-cookie `hp_refresh`, ротация +
+  отзыв), хэш **argon2id**, OAuth2-соцлогин — позже (сейчас email+пароль), управляющие
+  эндпоинты §7.2 принимают **и JWT, и ApiToken**.
+- **Контракт расширен** (с одобрения человека): тег `Auth`, схема `BearerAuth` (http bearer JWT),
+  глобальный `security: [BearerAuth, ApiToken]` (OR), эндпоинты `/auth/register|login|refresh|logout|me`,
+  схемы RegisterRequest/LoginRequest/RefreshRequest/AuthUser/AuthResult. Типы перегенерированы (TS+Go).
+- Миграция `00005_refresh_tokens.sql` (вспомогательная таблица auth, не из §5; хранит ХЭШ токена).
+- `internal/security`: argon2id (PHC), JWT HS256 (issue/parse, явный clock), refresh = random+SHA256-хэш.
+- **sqlc введён** (`backend/sqlc.yaml`, схема из goose-миграций, pgx/v5, overrides uuid→google/uuid,
+  timestamptz→time.Time): запросы для users/accounts/memberships/refresh_tokens →
+  `internal/store/db` (генерится, не править). `internal/store`: пул pgxpool + маппинг в домен +
+  транзакционная регистрация (user+account), ErrEmailTaken/ErrNotFound.
+- `internal/auth.Service`: Register/Login/Refresh(ротация)/Logout/Authenticate. `internal/api`:
+  хендлеры + middleware Bearer (`requireAuth`), формат ошибок по контракту, refresh-cookie,
+  роуты под `/api/v1`. main.go поднимает пул БД + TokenManager + Service (api теперь требует БД и JWT_SECRET).
+- Тесты: security (argon2/jwt/refresh), api auth-флоу через httptest с in-memory Repo
+  (register→me→login→refresh→logout + негативы). Все зелёные.
+- Env: `JWT_SECRET` (обязателен), `ACCESS_TTL`/`REFRESH_TTL` — в .env.example и docker-compose.
+- e2e на реальном стеке: register/login/me/refresh(ротация отзывает старый)/logout; пароль в БД —
+  argon2id; refresh_tokens отзываются корректно.
+
+⚠️ **Решение к пересмотру (флагнуто человеку):** бэкенд НЕ импортирует `shared/api-types/go`
+(Docker собирает api из контекста `./backend` без воркспейса — импорт сломал бы сборку). DTO в
+api-слое написаны вручную, синхронны с контрактом; конформность закроют контрактные тесты (1.5).
+Альтернатива на будущее — собрать api из воркспейса и подключить генерируемые типы.
+
+**Этап 1.2 — доменный слой `internal/domain` (написано и проверено, ждёт коммита человеком):**
+- `status.go` — `ComponentStatus` (нормативный enum) + `WorstStatus`/`displaySeverity`.
+  Нормативный приоритет показа (DESIGN §6, [РЕШЕНО]):
+  `operational(0) < degraded_performance(1) < under_maintenance(2) < partial_outage(3) < major_outage(4)`
+  — т.е. плановые работы перекрывают деградацию, но не реальные сбои.
+- `entities.go` — `User`, `Account`, `Membership` (+`Role` с `CanEdit`), `StatusPage` (+`Visibility`),
+  `ComponentGroup`, `Component` (+`CountsTowardStatus`: приватные и `display_state=false` не влияют
+  на статус), `ComponentStatusHistory` (+`HistorySource`), `BillingPlan`. ID — `uuid.UUID`.
+- `tree.go` — `ComponentNode`, `BuildComponentTree` (лес по `ParentID`, сортировка
+  Position→Name, безопасно к отсутствующим родителям/циклам), `EffectiveStatus` (худший в поддереве).
+- `page_status.go` — `ComputeOverallStatus` (общий статус страницы) и `ComputeGroupStatus`.
+- Тесты: `status_test.go`, `tree_test.go` — приоритет статусов, исключение приватных/скрытых,
+  вложенность и порядок дерева, агрегация группы. Все зелёные.
+- Решение: домен чист (без зависимостей от БД/HTTP/openapi); типы контракта (apitypes) мапятся
+  на домен в api-слое (этап 1.5), не в домене (CLAUDE §7). Добавлена зависимость `google/uuid`.
+
 **Этап 1.1 — миграции домена (написано и проверено, ждёт коммита человеком):**
 - `00002_enums_and_helpers.sql` — enum `component_status` (нормативный), enum `billing_plan`
   (нужен accounts уже сейчас), trigger-функция `set_updated_at()`.
@@ -141,6 +185,11 @@ _Этап 0 — завершён и закоммичен._
 - Миграции «запекаются» в api-образ на сборке. При изменении миграций для запуска через
   `docker compose exec api /app/migrate` нужно пересобрать образ (`docker compose up -d --build`).
   В dev проще гонять миграции с хоста: `make migrate-up` (берёт свежие из `backend/migrations`).
+- §7.2 в контракте принимает JWT и ApiToken, но **ApiToken-аутентификация ещё не реализована**
+  (только Bearer). ApiToken (токены страницы со scope) — этап 5. До тех пор управляющие
+  эндпоинты будут работать только по операторскому JWT.
+- api теперь **требует БД и JWT_SECRET** для старта (auth). Без них процесс не поднимется —
+  значит и `/healthz` недоступен. Для локального запуска без БД это ожидаемо (этап 1+).
 
 ---
 
@@ -155,3 +204,11 @@ _Этап 0 — завершён и закоммичен._
   `component_status`/`billing_plan`, 8 таблиц, триггеры updated_at, дерево компонентов,
   history с open-period unique. Проверено на PG16 (up/status/reset/up + инварианты).
   Остановились перед коммитом; дальше — Этап 1.2 (доменный слой).
+- 2026-06-27 — Этап 1.2 (доменный слой `internal/domain`): сущности + enum'ы + нормативный
+  приоритет статусов (§6) + дерево компонентов + агрегация общего/группового статуса; юнит-тесты.
+  Зависимость google/uuid. Всё зелёное (build/test/vet/lint). Дальше — 1.3 (auth), там развилка
+  для человека (сессии vs JWT, argon2 vs bcrypt).
+- 2026-06-27 — Этап 1.3 (auth): JWT access+refresh + argon2id; расширен openapi (/auth/*, BearerAuth);
+  введён sqlc + store + auth.Service + хендлеры/middleware; миграция refresh_tokens. Зависимости
+  golang-jwt/v5, x/crypto/argon2. Проверено e2e на реальном стеке. Дальше — 1.4 (store для
+  pages/components/groups/history).

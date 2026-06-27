@@ -37,8 +37,11 @@
 - [x] **1.1** Миграции: `Account`, `User`, `Membership`, `StatusPage`, `ComponentGroup`,
       `Component` (с `parent_id` — дерево!), `ComponentStatusHistory`. Enum `component_status`.
       — ✅ проверено (up/status/reset/up, инварианты), ждёт коммита человеком.
-- [ ] **1.2** Доменный слой `internal/domain`: сущности выше + бизнес-правила (статусы, иерархия).
-- [ ] **1.3** Auth: регистрация/логин, сессии или JWT; хэш паролей (argon2/bcrypt). Membership с ролями.
+- [x] **1.2** Доменный слой `internal/domain`: сущности выше + бизнес-правила (статусы, иерархия).
+      — ✅ сущности, enum'ы, приоритет статусов (§6), дерево; юнит-тесты зелёные. Ждёт коммита.
+- [x] **1.3** Auth: регистрация/логин, сессии или JWT; хэш паролей (argon2/bcrypt). Membership с ролями.
+      — ✅ JWT access+refresh (ротация/отзыв), argon2id, эндпоинты /auth/* (контракт расширен),
+      middleware Bearer; sqlc введён для user/account/membership/refresh. Проверено e2e. Ждёт коммита.
 - [ ] **1.4** Store-слой (sqlc/pgx) для сущностей этапа.
 - [ ] **1.5** API: CRUD страниц; CRUD компонентов и групп, включая **вложенные подкомпоненты**;
       ручная смена `current_status`. Строго по `openapi.yaml`.

@@ -34,8 +34,9 @@
 
 Зависит от: 0. Соответствует DESIGN §11 «Этап 1», §3.2, §5, §6.
 
-- [ ] **1.1** Миграции: `Account`, `User`, `Membership`, `StatusPage`, `ComponentGroup`,
+- [x] **1.1** Миграции: `Account`, `User`, `Membership`, `StatusPage`, `ComponentGroup`,
       `Component` (с `parent_id` — дерево!), `ComponentStatusHistory`. Enum `component_status`.
+      — ✅ проверено (up/status/reset/up, инварианты), ждёт коммита человеком.
 - [ ] **1.2** Доменный слой `internal/domain`: сущности выше + бизнес-правила (статусы, иерархия).
 - [ ] **1.3** Auth: регистрация/логин, сессии или JWT; хэш паролей (argon2/bcrypt). Membership с ролями.
 - [ ] **1.4** Store-слой (sqlc/pgx) для сущностей этапа.

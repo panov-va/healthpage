@@ -10,9 +10,10 @@
 
 ## Текущий статус
 
-**Фаза:** Этап 0 (Каркас) — код написан и проверен, ждёт коммита человеком.
-**Следующий шаг:** после коммита Этапа 0 — Этап 1 (Ядро домена), начиная с 1.1 (миграции
-`Account`/`User`/`StatusPage`/`Component` с деревом, enum `component_status`).
+**Фаза:** Этап 1 (Ядро домена). Этап 0 закоммичен. Задача 1.1 (миграции) — написана и
+проверена, ждёт коммита человеком.
+**Следующий шаг:** Этап 1.2 — доменный слой `internal/domain` (сущности этапа + бизнес-правила
+статусов и иерархии). Затем 1.3 (auth) и 1.4 (store-слой, ввод sqlc).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -83,7 +84,31 @@
 
 ## Что в работе
 
-_(ничего — Этап 0 завершён, ждёт ревью/коммита)_
+**Этап 1.1 — миграции домена (написано и проверено, ждёт коммита человеком):**
+- `00002_enums_and_helpers.sql` — enum `component_status` (нормативный), enum `billing_plan`
+  (нужен accounts уже сейчас), trigger-функция `set_updated_at()`.
+- `00003_accounts_users_pages.sql` — `users` (email уникален по `lower(email)`), `accounts`
+  (`owner_user_id`→users, `billing_plan`), `status_pages` (slug/custom_domain — partial-unique
+  среди не-удалённых; `theme` jsonb; soft-delete), `memberships` (роль через CHECK
+  owner/admin/editor/viewer; unique по user+page). Триггеры updated_at на все.
+- `00004_components.sql` — `component_groups`, `components` (дерево `parent_id` self-FK,
+  ON DELETE CASCADE; `current_status` component_status), `component_status_history`
+  (partial-unique `csh_open_period_key` — не более одного открытого периода на компонент;
+  `source` через CHECK manual/incident/maintenance/api). Триггеры updated_at.
+
+Решения по схеме (в рамках DESIGN §5, контракт не менялся):
+- UUID — `gen_random_uuid()` (встроен в PG16, без расширений).
+- `updated_at` — общий trigger `set_updated_at()`; проверено, что растёт между транзакциями.
+- soft-delete (`deleted_at`) — у пользовательского контента: status_pages, component_groups,
+  components. У users/accounts/memberships — нет (управление через is_active / каскад).
+- role/visibility/source/csh — TEXT + CHECK (не входят в нормативный список enum'ов §5),
+  чтобы не плодить pg-типы; component_status и billing_plan — pg enum (нормативны).
+
+Проверено на живом PG16: up→version 4; схема (8 таблиц + 2 enum) соответствует DESIGN §5;
+reset откатывает всё без остатка (enum'ы тоже), повторный up чистый; FK-цепочка, дерево
+parent_id, partial-unique slug после soft-delete и open-period unique — работают.
+
+_Этап 0 — завершён и закоммичен._
 
 ---
 
@@ -113,6 +138,9 @@ _(ничего — Этап 0 завершён, ждёт ревью/коммит
   пересмотреть при стабилизации фронта.
 - Сгенерированные типы (`apitypes.gen.go`, `schema.ts`) пока никем не импортируются — потребители
   появятся на этапе 1.
+- Миграции «запекаются» в api-образ на сборке. При изменении миграций для запуска через
+  `docker compose exec api /app/migrate` нужно пересобрать образ (`docker compose up -d --build`).
+  В dev проще гонять миграции с хоста: `make migrate-up` (берёт свежие из `backend/migrations`).
 
 ---
 
@@ -123,3 +151,7 @@ _(ничего — Этап 0 завершён, ждёт ревью/коммит
 - 2026-06-27 — Этап 0 (Каркас) полностью: монорепо, docker-compose, api `/healthz`, goose,
   линтеры/CI, каркасы фронтов, генерация типов. Всё проверено локально. Остановились перед
   коммитом человеком; дальше — Этап 1.1.
+- 2026-06-27 — Этап 0 закоммичен. Этап 1.1 (миграции домена): 00002–00004, enum
+  `component_status`/`billing_plan`, 8 таблиц, триггеры updated_at, дерево компонентов,
+  history с open-period unique. Проверено на PG16 (up/status/reset/up + инварианты).
+  Остановились перед коммитом; дальше — Этап 1.2 (доменный слой).

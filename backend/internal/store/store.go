@@ -90,6 +90,15 @@ func (s *Store) CreateUserWithAccount(
 	return mapUser(u), mapAccount(a), nil
 }
 
+// AccountByOwner возвращает аккаунт, которым владеет пользователь (в MVP — один). ErrNotFound если нет.
+func (s *Store) AccountByOwner(ctx context.Context, ownerUserID uuid.UUID) (domain.Account, error) {
+	a, err := s.q.GetAccountByOwner(ctx, ownerUserID)
+	if err != nil {
+		return domain.Account{}, wrapNotFound(err)
+	}
+	return mapAccount(a), nil
+}
+
 // UserByEmail находит пользователя по email (без учёта регистра). ErrNotFound если нет.
 func (s *Store) UserByEmail(ctx context.Context, email string) (domain.User, error) {
 	u, err := s.q.GetUserByEmail(ctx, email)

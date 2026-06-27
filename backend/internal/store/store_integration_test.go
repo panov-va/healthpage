@@ -52,7 +52,7 @@ func TestStoreIntegration(t *testing.T) {
 
 	// Страница.
 	slug := "it-" + uuid.NewString()[:8]
-	page, err := st.CreateStatusPage(ctx, account.ID, "Demo", "", slug, "UTC", "ru", "public")
+	page, err := st.CreateStatusPage(ctx, account.ID, user.ID, "Demo", "", slug, "UTC", "ru", "public")
 	if err != nil {
 		t.Fatalf("CreateStatusPage: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestStoreIntegration(t *testing.T) {
 	}
 
 	// Дубль slug -> ErrSlugTaken.
-	if _, err := st.CreateStatusPage(ctx, account.ID, "Dup", "", slug, "UTC", "ru", "public"); err != store.ErrSlugTaken {
+	if _, err := st.CreateStatusPage(ctx, account.ID, user.ID, "Dup", "", slug, "UTC", "ru", "public"); err != store.ErrSlugTaken {
 		t.Fatalf("duplicate slug: want ErrSlugTaken, got %v", err)
 	}
 

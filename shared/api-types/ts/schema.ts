@@ -557,7 +557,10 @@ export interface paths {
         /** Список компонентов (админ) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Страница, чьи компоненты вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. */
+                    status_page_id?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -668,6 +671,303 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Component"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        trace?: never;
+    };
+    "/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Список страниц оператора */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatusPage"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        /** Создать страницу статуса */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StatusPageCreate"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatusPage"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                409: components["responses"]["ValidationError"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** Получить страницу (управление) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatusPage"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Удалить страницу */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Изменить страницу */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StatusPageUpdate"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatusPage"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        trace?: never;
+    };
+    "/pages/{id}/component-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** Список групп компонентов страницы */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ComponentGroup"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /** Создать группу компонентов */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ComponentGroupCreate"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ComponentGroup"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/component-groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Удалить группу компонентов */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Изменить группу компонентов */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ComponentGroupUpdate"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ComponentGroup"];
                     };
                 };
                 401: components["responses"]["Unauthorized"];
@@ -1929,6 +2229,8 @@ export interface components {
             name: string;
             description?: string;
             /** Format: uuid */
+            status_page_id?: string;
+            /** Format: uuid */
             group_id?: string;
             /** Format: uuid */
             parent_id?: string;
@@ -1959,6 +2261,67 @@ export interface components {
             position: number;
             aggregated_status?: components["schemas"]["ComponentStatus"];
             components?: components["schemas"]["Component"][];
+        };
+        ComponentGroupCreate: {
+            name: string;
+            position?: number;
+        };
+        ComponentGroupUpdate: {
+            name?: string;
+            position?: number;
+        };
+        StatusPage: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            account_id?: string;
+            name: string;
+            description?: string;
+            slug: string;
+            timezone?: string;
+            default_locale?: string;
+            /** @enum {string} */
+            visibility: "public" | "private";
+            custom_domain?: string | null;
+            domain_verified?: boolean;
+            theme?: {
+                [key: string]: unknown;
+            };
+            logo_url?: string | null;
+            favicon_url?: string | null;
+            hide_powered_by?: boolean;
+            redirect_url?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        StatusPageCreate: {
+            name: string;
+            slug: string;
+            description?: string;
+            timezone?: string;
+            default_locale?: string;
+            /**
+             * @default public
+             * @enum {string}
+             */
+            visibility: "public" | "private";
+        };
+        StatusPageUpdate: {
+            name?: string;
+            description?: string;
+            timezone?: string;
+            default_locale?: string;
+            /** @enum {string} */
+            visibility?: "public" | "private";
+            theme?: {
+                [key: string]: unknown;
+            };
+            logo_url?: string | null;
+            favicon_url?: string | null;
+            hide_powered_by?: boolean;
+            redirect_url?: string | null;
         };
         IncidentComponent: {
             /** Format: uuid */

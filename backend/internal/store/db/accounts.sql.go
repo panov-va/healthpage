@@ -53,3 +53,21 @@ func (q *Queries) GetAccountByID(ctx context.Context, id uuid.UUID) (Account, er
 	)
 	return i, err
 }
+
+const getAccountByOwner = `-- name: GetAccountByOwner :one
+SELECT id, name, billing_plan, owner_user_id, created_at, updated_at FROM accounts WHERE owner_user_id = $1 ORDER BY created_at LIMIT 1
+`
+
+func (q *Queries) GetAccountByOwner(ctx context.Context, ownerUserID uuid.UUID) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByOwner, ownerUserID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.BillingPlan,
+		&i.OwnerUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

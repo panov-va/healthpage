@@ -9,6 +9,7 @@ import (
 
 	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/domain"
+	"github.com/healthpage/backend/internal/store"
 )
 
 const (
@@ -19,19 +20,21 @@ const (
 // Deps — зависимости HTTP-слоя.
 type Deps struct {
 	Auth       *auth.Service
+	Store      *store.Store
 	Prod       bool          // влияет на флаг Secure у refresh-cookie
 	RefreshTTL time.Duration // срок жизни refresh-cookie
 }
 
 type server struct {
 	auth       *auth.Service
+	store      *store.Store
 	prod       bool
 	refreshTTL time.Duration
 }
 
-// NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth на этапе 1.3).
+// NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, prod: d.Prod, refreshTTL: d.RefreshTTL}
+	s := &server{auth: d.Auth, store: d.Store, prod: d.Prod, refreshTTL: d.RefreshTTL}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -46,6 +49,33 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/refresh", s.handleRefresh)
 			r.Post("/logout", s.handleLogout)
 			r.With(s.requireAuth).Get("/me", s.handleMe)
+		})
+
+		// Публичные read-only эндпоинты (без авторизации). Параметр сегмента страницы — {page}
+		// (единое имя для chi); здесь трактуется как slug.
+		r.Get("/pages/{page}/summary", s.handlePublicSummary)
+		r.Get("/pages/{page}/components", s.handlePublicComponents)
+
+		// Управляющие эндпоинты — только по операторскому JWT (ApiToken — этап 5).
+		// {page} здесь трактуется как uuid.
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAuth)
+
+			r.Get("/pages", s.handleListPages)
+			r.Post("/pages", s.handleCreatePage)
+			r.Get("/pages/{page}", s.handleGetPage)
+			r.Patch("/pages/{page}", s.handlePatchPage)
+			r.Delete("/pages/{page}", s.handleDeletePage)
+
+			r.Get("/pages/{page}/component-groups", s.handleListGroups)
+			r.Post("/pages/{page}/component-groups", s.handleCreateGroup)
+			r.Patch("/component-groups/{id}", s.handlePatchGroup)
+			r.Delete("/component-groups/{id}", s.handleDeleteGroup)
+
+			r.Get("/components", s.handleListComponents)
+			r.Post("/components", s.handleCreateComponent)
+			r.Patch("/components/{id}", s.handlePatchComponent)
+			r.Delete("/components/{id}", s.handleDeleteComponent)
 		})
 	})
 

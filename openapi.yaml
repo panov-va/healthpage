@@ -20,6 +20,8 @@ tags:
     description: Регистрация и вход оператора (JWT access + refresh)
   - name: Public
     description: Публичные read-only эндпоинты (без авторизации)
+  - name: Pages
+    description: Управление страницами статуса (оператор)
   - name: Components
     description: Управление компонентами и группами
   - name: Incidents
@@ -285,6 +287,14 @@ paths:
     get:
       tags: [Components]
       summary: Список компонентов (админ)
+      parameters:
+        - name: status_page_id
+          in: query
+          required: false
+          description: >
+            Страница, чьи компоненты вернуть. Обязателен при операторском JWT; при ApiToken
+            выводится из токена.
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: OK
@@ -336,6 +346,139 @@ paths:
       summary: Удалить компонент
       parameters:
         - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────────── PAGES (управление) ────────────────────
+  /pages:
+    get:
+      tags: [Pages]
+      summary: Список страниц оператора
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StatusPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Pages]
+      summary: Создать страницу статуса
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StatusPageCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/ValidationError' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /pages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Pages]
+      summary: Получить страницу (управление)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Pages]
+      summary: Изменить страницу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StatusPageUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Pages]
+      summary: Удалить страницу
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{id}/component-groups:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Components]
+      summary: Список групп компонентов страницы
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ComponentGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Components]
+      summary: Создать группу компонентов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComponentGroupCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ComponentGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /component-groups/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags: [Components]
+      summary: Изменить группу компонентов
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComponentGroupUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ComponentGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Components]
+      summary: Удалить группу компонентов
       responses:
         '204': { description: No Content }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -1036,6 +1179,9 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
+        # При операторском JWT обязателен (страница не выводится из токена); при ApiToken
+        # выводится из токена и должен совпадать, если передан.
+        status_page_id: { type: string, format: uuid }
         group_id: { type: string, format: uuid }
         parent_id: { type: string, format: uuid }
         position: { type: integer }
@@ -1068,6 +1214,67 @@ components:
         components:
           type: array
           items: { $ref: '#/components/schemas/Component' }
+
+    ComponentGroupCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        position: { type: integer }
+
+    ComponentGroupUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        position: { type: integer }
+
+    # ── страницы статуса (управление) ──
+    StatusPage:
+      type: object
+      required: [id, name, slug, visibility]
+      properties:
+        id: { type: string, format: uuid }
+        account_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        slug: { type: string }
+        timezone: { type: string }
+        default_locale: { type: string }
+        visibility: { type: string, enum: [public, private] }
+        custom_domain: { type: [string, "null"] }
+        domain_verified: { type: boolean }
+        theme: { type: object, additionalProperties: true }
+        logo_url: { type: [string, "null"] }
+        favicon_url: { type: [string, "null"] }
+        hide_powered_by: { type: boolean }
+        redirect_url: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    StatusPageCreate:
+      type: object
+      required: [name, slug]
+      properties:
+        name: { type: string }
+        slug: { type: string }
+        description: { type: string }
+        timezone: { type: string }
+        default_locale: { type: string }
+        visibility: { type: string, enum: [public, private], default: public }
+
+    StatusPageUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        timezone: { type: string }
+        default_locale: { type: string }
+        visibility: { type: string, enum: [public, private] }
+        theme: { type: object, additionalProperties: true }
+        logo_url: { type: [string, "null"] }
+        favicon_url: { type: [string, "null"] }
+        hide_powered_by: { type: boolean }
+        redirect_url: { type: [string, "null"] }
 
     # ── инциденты ──
     IncidentComponent:

@@ -14,11 +14,19 @@ import (
 // ErrSlugTaken — slug страницы уже занят (среди не-удалённых).
 var ErrSlugTaken = errors.New("store: slug already taken")
 
-// CreateStatusPage создаёт страницу статуса. ErrSlugTaken при конфликте slug.
+// CreateStatusPage создаёт страницу статуса и owner-membership для создателя в одной транзакции.
+// ErrSlugTaken при конфликте slug.
 func (s *Store) CreateStatusPage(
-	ctx context.Context, accountID uuid.UUID, name, description, slug, timezone, locale, visibility string,
+	ctx context.Context, accountID, ownerUserID uuid.UUID, name, description, slug, timezone, locale, visibility string,
 ) (domain.StatusPage, error) {
-	p, err := s.q.CreateStatusPage(ctx, db.CreateStatusPageParams{
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.StatusPage{}, fmt.Errorf("store: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := s.q.WithTx(tx)
+
+	p, err := q.CreateStatusPage(ctx, db.CreateStatusPageParams{
 		AccountID:     accountID,
 		Name:          name,
 		Description:   description,
@@ -32,6 +40,16 @@ func (s *Store) CreateStatusPage(
 			return domain.StatusPage{}, ErrSlugTaken
 		}
 		return domain.StatusPage{}, fmt.Errorf("store: create status page: %w", err)
+	}
+
+	if _, err := q.CreateMembership(ctx, db.CreateMembershipParams{
+		UserID: ownerUserID, StatusPageID: p.ID, Role: string(domain.RoleOwner),
+	}); err != nil {
+		return domain.StatusPage{}, fmt.Errorf("store: create owner membership: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return domain.StatusPage{}, fmt.Errorf("store: commit: %w", err)
 	}
 	return mapStatusPage(p), nil
 }

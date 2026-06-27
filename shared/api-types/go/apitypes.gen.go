@@ -117,6 +117,24 @@ const (
 	PaymentStatusSucceeded PaymentStatus = "succeeded"
 )
 
+// Defines values for StatusPageVisibility.
+const (
+	StatusPageVisibilityPrivate StatusPageVisibility = "private"
+	StatusPageVisibilityPublic  StatusPageVisibility = "public"
+)
+
+// Defines values for StatusPageCreateVisibility.
+const (
+	StatusPageCreateVisibilityPrivate StatusPageCreateVisibility = "private"
+	StatusPageCreateVisibilityPublic  StatusPageCreateVisibility = "public"
+)
+
+// Defines values for StatusPageUpdateVisibility.
+const (
+	Private StatusPageUpdateVisibility = "private"
+	Public  StatusPageUpdateVisibility = "public"
+)
+
 // Defines values for SubscriberChannel.
 const (
 	Email    SubscriberChannel = "email"
@@ -211,6 +229,7 @@ type ComponentCreate struct {
 	ParentId      *openapi_types.UUID `json:"parent_id,omitempty"`
 	Position      *int                `json:"position,omitempty"`
 	ShowUptime    *bool               `json:"show_uptime,omitempty"`
+	StatusPageId  *openapi_types.UUID `json:"status_page_id,omitempty"`
 }
 
 // ComponentGroup defines model for ComponentGroup.
@@ -220,6 +239,18 @@ type ComponentGroup struct {
 	Id               openapi_types.UUID `json:"id"`
 	Name             string             `json:"name"`
 	Position         int                `json:"position"`
+}
+
+// ComponentGroupCreate defines model for ComponentGroupCreate.
+type ComponentGroupCreate struct {
+	Name     string `json:"name"`
+	Position *int   `json:"position,omitempty"`
+}
+
+// ComponentGroupUpdate defines model for ComponentGroupUpdate.
+type ComponentGroupUpdate struct {
+	Name     *string `json:"name,omitempty"`
+	Position *int    `json:"position,omitempty"`
 }
 
 // ComponentStatus defines model for ComponentStatus.
@@ -470,6 +501,60 @@ type RegisterRequest struct {
 	Password    string              `json:"password"`
 }
 
+// StatusPage defines model for StatusPage.
+type StatusPage struct {
+	AccountId      *openapi_types.UUID     `json:"account_id,omitempty"`
+	CreatedAt      *time.Time              `json:"created_at,omitempty"`
+	CustomDomain   *string                 `json:"custom_domain"`
+	DefaultLocale  *string                 `json:"default_locale,omitempty"`
+	Description    *string                 `json:"description,omitempty"`
+	DomainVerified *bool                   `json:"domain_verified,omitempty"`
+	FaviconUrl     *string                 `json:"favicon_url"`
+	HidePoweredBy  *bool                   `json:"hide_powered_by,omitempty"`
+	Id             openapi_types.UUID      `json:"id"`
+	LogoUrl        *string                 `json:"logo_url"`
+	Name           string                  `json:"name"`
+	RedirectUrl    *string                 `json:"redirect_url"`
+	Slug           string                  `json:"slug"`
+	Theme          *map[string]interface{} `json:"theme,omitempty"`
+	Timezone       *string                 `json:"timezone,omitempty"`
+	UpdatedAt      *time.Time              `json:"updated_at,omitempty"`
+	Visibility     StatusPageVisibility    `json:"visibility"`
+}
+
+// StatusPageVisibility defines model for StatusPage.Visibility.
+type StatusPageVisibility string
+
+// StatusPageCreate defines model for StatusPageCreate.
+type StatusPageCreate struct {
+	DefaultLocale *string                     `json:"default_locale,omitempty"`
+	Description   *string                     `json:"description,omitempty"`
+	Name          string                      `json:"name"`
+	Slug          string                      `json:"slug"`
+	Timezone      *string                     `json:"timezone,omitempty"`
+	Visibility    *StatusPageCreateVisibility `json:"visibility,omitempty"`
+}
+
+// StatusPageCreateVisibility defines model for StatusPageCreate.Visibility.
+type StatusPageCreateVisibility string
+
+// StatusPageUpdate defines model for StatusPageUpdate.
+type StatusPageUpdate struct {
+	DefaultLocale *string                     `json:"default_locale,omitempty"`
+	Description   *string                     `json:"description,omitempty"`
+	FaviconUrl    *string                     `json:"favicon_url"`
+	HidePoweredBy *bool                       `json:"hide_powered_by,omitempty"`
+	LogoUrl       *string                     `json:"logo_url"`
+	Name          *string                     `json:"name,omitempty"`
+	RedirectUrl   *string                     `json:"redirect_url"`
+	Theme         *map[string]interface{}     `json:"theme,omitempty"`
+	Timezone      *string                     `json:"timezone,omitempty"`
+	Visibility    *StatusPageUpdateVisibility `json:"visibility,omitempty"`
+}
+
+// StatusPageUpdateVisibility defines model for StatusPageUpdate.Visibility.
+type StatusPageUpdateVisibility string
+
 // SubscribeRequest defines model for SubscribeRequest.
 type SubscribeRequest struct {
 	Address      string                `json:"address"`
@@ -582,6 +667,12 @@ type GetBillingPaymentsParams struct {
 // PostBillingWebhookProviderJSONBody defines parameters for PostBillingWebhookProvider.
 type PostBillingWebhookProviderJSONBody map[string]interface{}
 
+// GetComponentsParams defines parameters for GetComponents.
+type GetComponentsParams struct {
+	// StatusPageId Страница, чьи компоненты вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена.
+	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
+}
+
 // PostIntegrationsIntegrationIdGenericJSONBody defines parameters for PostIntegrationsIntegrationIdGeneric.
 type PostIntegrationsIntegrationIdGenericJSONBody map[string]interface{}
 
@@ -656,6 +747,9 @@ type PostBillingCheckoutJSONRequestBody = CheckoutRequest
 // PostBillingWebhookProviderJSONRequestBody defines body for PostBillingWebhookProvider for application/json ContentType.
 type PostBillingWebhookProviderJSONRequestBody PostBillingWebhookProviderJSONBody
 
+// PatchComponentGroupsIdJSONRequestBody defines body for PatchComponentGroupsId for application/json ContentType.
+type PatchComponentGroupsIdJSONRequestBody = ComponentGroupUpdate
+
 // PostComponentsJSONRequestBody defines body for PostComponents for application/json ContentType.
 type PostComponentsJSONRequestBody = ComponentCreate
 
@@ -694,6 +788,15 @@ type PatchMaintenancesIdJSONRequestBody = MaintenancePatch
 
 // PostMaintenancesIdUpdatesJSONRequestBody defines body for PostMaintenancesIdUpdates for application/json ContentType.
 type PostMaintenancesIdUpdatesJSONRequestBody = MaintenanceUpdateCreate
+
+// PostPagesJSONRequestBody defines body for PostPages for application/json ContentType.
+type PostPagesJSONRequestBody = StatusPageCreate
+
+// PatchPagesIdJSONRequestBody defines body for PatchPagesId for application/json ContentType.
+type PatchPagesIdJSONRequestBody = StatusPageUpdate
+
+// PostPagesIdComponentGroupsJSONRequestBody defines body for PostPagesIdComponentGroups for application/json ContentType.
+type PostPagesIdComponentGroupsJSONRequestBody = ComponentGroupCreate
 
 // PostPagesSlugSubscribeJSONRequestBody defines body for PostPagesSlugSubscribe for application/json ContentType.
 type PostPagesSlugSubscribeJSONRequestBody = SubscribeRequest

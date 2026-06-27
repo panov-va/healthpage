@@ -73,6 +73,114 @@ export function dict(locale: Locale): Dict {
   return dicts[locale];
 }
 
+// ── Лендинг (SSR для SEO) ──
+
+interface PlanFeature {
+  label: string;
+  free: boolean;
+  premium: boolean;
+}
+
+interface LandingDict {
+  metaTitle: string;
+  metaDescription: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  ctaPrimary: string;
+  ctaSecondary: string;
+  featuresTitle: string;
+  features: { title: string; body: string }[];
+  pricingTitle: string;
+  planFree: string;
+  planPremium: string;
+  priceFree: string;
+  pricePremium: string;
+  featureColumn: string;
+  planFeatures: PlanFeature[];
+}
+
+// Матрица фич — DESIGN §10. Конкретная цена Premium не указана: [РЕШЕНО] ориентир «Статусмейт −10%»,
+// но точная сумма берётся перед запуском ([ТРЕБОВАНИЕ]), поэтому на лендинге — «уточняется».
+const landingRu: LandingDict = {
+  metaTitle: "HealthPage — страницы статуса для вашего продукта",
+  metaDescription:
+    "Создавайте публичные страницы статуса, публикуйте инциденты и плановые работы, " +
+    "уведомляйте клиентов по email, Telegram, MAX и Slack. Manual-first, без сложной настройки.",
+  heroTitle: "Страницы статуса для вашего продукта",
+  heroSubtitle:
+    "Сообщайте клиентам о состоянии сервиса, инцидентах и плановых работах — " +
+    "вручную и под полным контролем. Подписки по email, RSS, Telegram, MAX и Slack.",
+  ctaPrimary: "Начать бесплатно",
+  ctaSecondary: "Посмотреть пример",
+  featuresTitle: "Возможности",
+  features: [
+    { title: "Ручное управление статусом", body: "Вы сами управляете состоянием сервисов и компонентов — без ложных срабатываний автомониторинга." },
+    { title: "Инциденты и плановые работы", body: "Публикуйте ленту обновлений; плановые работы не считаются простоем." },
+    { title: "Подписки и уведомления", body: "Email, RSS, iCal, Telegram, MAX и Slack — без лимита на число подписчиков." },
+    { title: "Брендирование", body: "Тема, тёмный режим, логотип, собственный домен и white-label." },
+  ],
+  pricingTitle: "Тарифы",
+  planFree: "Free",
+  planPremium: "Premium",
+  priceFree: "Бесплатно",
+  pricePremium: "Цена уточняется",
+  featureColumn: "Возможность",
+  planFeatures: [
+    { label: "Компоненты, группы, инциденты, работы", free: true, premium: true },
+    { label: "Подписчики без лимита (email/RSS/Telegram/MAX/Slack)", free: true, premium: true },
+    { label: "Брендирование, тёмная тема, шаблоны", free: true, premium: true },
+    { label: "Управление командой и уровни доступа", free: true, premium: true },
+    { label: "Собственный домен (CNAME + TLS)", free: false, premium: true },
+    { label: "Приватные страницы", free: false, premium: true },
+    { label: "Custom SMTP / собственный From", free: false, premium: true },
+    { label: "Скрытие «Работает на …» (white-label)", free: false, premium: true },
+    { label: "Приоритетная поддержка", free: false, premium: true },
+  ],
+};
+
+const landingEn: LandingDict = {
+  metaTitle: "HealthPage — status pages for your product",
+  metaDescription:
+    "Build public status pages, publish incidents and scheduled maintenance, and notify " +
+    "customers via email, Telegram, MAX and Slack. Manual-first, no complex setup.",
+  heroTitle: "Status pages for your product",
+  heroSubtitle:
+    "Keep customers informed about service health, incidents and scheduled maintenance — " +
+    "manually and fully in your control. Subscriptions via email, RSS, Telegram, MAX and Slack.",
+  ctaPrimary: "Get started free",
+  ctaSecondary: "See an example",
+  featuresTitle: "Features",
+  features: [
+    { title: "Manual status control", body: "You control the state of your services and components — no false alarms from auto-monitoring." },
+    { title: "Incidents & maintenance", body: "Publish an update feed; scheduled maintenance is not counted as downtime." },
+    { title: "Subscriptions & notifications", body: "Email, RSS, iCal, Telegram, MAX and Slack — with no limit on subscribers." },
+    { title: "Branding", body: "Theme, dark mode, logo, custom domain and white-label." },
+  ],
+  pricingTitle: "Pricing",
+  planFree: "Free",
+  planPremium: "Premium",
+  priceFree: "Free",
+  pricePremium: "Price TBD",
+  featureColumn: "Feature",
+  planFeatures: [
+    { label: "Components, groups, incidents, maintenance", free: true, premium: true },
+    { label: "Unlimited subscribers (email/RSS/Telegram/MAX/Slack)", free: true, premium: true },
+    { label: "Branding, dark theme, templates", free: true, premium: true },
+    { label: "Team management and access levels", free: true, premium: true },
+    { label: "Custom domain (CNAME + TLS)", free: false, premium: true },
+    { label: "Private pages", free: false, premium: true },
+    { label: "Custom SMTP / custom From", free: false, premium: true },
+    { label: "Hide “Powered by…” (white-label)", free: false, premium: true },
+    { label: "Priority support", free: false, premium: true },
+  ],
+};
+
+const landingDicts: Record<Locale, LandingDict> = { ru: landingRu, en: landingEn };
+
+export function landing(locale: Locale): LandingDict {
+  return landingDicts[locale];
+}
+
 export function formatUpdatedAt(iso: string, locale: Locale): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) {

@@ -16,8 +16,9 @@
     "noUnusedParameters": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@api-types": ["../../shared/api-types/ts/schema.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../../shared/api-types/ts/schema.ts"]
 }

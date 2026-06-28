@@ -12,10 +12,11 @@
 
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
-**Фаза:** Этап 1 (Ядро домена). Этап 0 закоммичен (+ возможно 1.1). Задачи 1.1–1.9 написаны
-и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 1.10 — админка (React+FSD): экран входа, список страниц, CRUD
-компонентов/групп, ручная смена статуса. Это закрывает Этап 1 (acceptance).
+**Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
+Задачи 1.1–1.10 написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 2.1 — миграции инцидентов/работ (Incident, IncidentComponent,
+IncidentUpdate, Maintenance, ...; enum'ы incident_status/impact/maintenance_status).
+Перед стартом этапа 2 — дать человеку закоммитить 1.1–1.10 и подтвердить acceptance этапа 1.
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -85,6 +86,32 @@
 ---
 
 ## Что в работе
+
+**Этап 1.10 — админка React+FSD (написано и собрано, ждёт коммита):**
+- Стек: `frontend/admin` (Vite+React+TS), добавлен **react-router-dom@6**. Типы API берутся из
+  сгенерированного `shared/api-types/ts/schema.ts` через alias `@api-types` (vite+tsconfig);
+  руками не правятся. dev-proxy: `/api` → `http://localhost:8080` (vite.config) — обходит CORS,
+  в проде admin и api за одним gateway. Базовый префикс запросов — `/api/v1`.
+- **FSD-слои строго:**
+  - `shared`: `config` (API_BASE, ключ токена), `api` (http-клиент с Bearer + **refresh-on-401**
+    через httpOnly-cookie, `HttpError{status,code,message}`; псевдонимы типов из `@api-types`;
+    `COMPONENT_STATUSES`), `ui` (Button/Field/Input/Select/Card + `styles.css`), `lib/status`
+    (RU-подписи и цвета статусов).
+  - `entities`: `session` (контекст `useSession`: user/loading/applyAuth/clear, проверка токена
+    на старте через `/auth/me`; api register/login/logout/fetchMe), `page`, `component`
+    (+`buildComponentTree` по parent_id), `componentGroup` — api-обёртки над эндпоинтами.
+  - `features`: `auth` (AuthForm вход+регистрация, LogoutButton), `page-create`,
+    `group-create`, `component-create` (выбор группы/родителя/статуса), `component-status`
+    (инлайн StatusSelect — ручная смена, backend пишет историю периодов).
+  - `widgets`: `component-tree` (рекурсивный рендер дерева: статус-селект + удаление, метка
+    приватных).
+  - `pages`: `login` (центр. форма), `pages-list` (список + создание/удаление страниц),
+    `page-detail` (группы + дерево компонентов, добавление группы/компонента, смена статуса,
+    удаление). `app`: SessionProvider + BrowserRouter, `RequireAuth` (гард), `AppLayout` (топбар).
+- **Удаления:** компонент — каскад детей (FK parent_id CASCADE), группа — компоненты становятся
+  без группы (FK group_id SET NULL); после удаления список компонентов перечитывается.
+- Линтер для admin не настроен (как и у public-ssr) — CI гоняет только `npm run build`. **Собрано
+  зелёным** (`tsc --noEmit && vite build`). e2e против живого backend не гонял (нужны БД+api).
 
 **Этап 1.9 — лендинг SSR для SEO (написано и проверено, ждёт коммита):**
 - `frontend/public-ssr/app/page.tsx` — главная: hero (заголовок/подзаголовок + CTA на `/status/demo`),
@@ -308,3 +335,8 @@ _Этап 0 — завершён и закоммичен._
 - 2026-06-27 — Этап 1.9 (лендинг SSR): главная (hero + возможности + таблица тарифов Free/Premium,
   матрица фич §10), SEO-метатеги per-locale, i18n RU/EN; цена Premium не указана ([РЕШИТЬ]).
   Сборка/рендер проверены. Дальше — 1.10 (админка React+FSD), закрывает Этап 1.
+- 2026-06-28 — Этап 1.10 (админка React+FSD): FSD-слои shared/entities/features/widgets/pages/app,
+  react-router, JWT-сессия с refresh-on-401, вход+регистрация, список/CRUD страниц, управление
+  страницей (группы + дерево компонентов, инлайн-смена статуса, удаления), типы из `@api-types`,
+  dev-proxy `/api`→:8080. `npm run build` зелёный. **Этап 1 закрыт по коду.** Дальше — этап 2.1
+  (миграции инцидентов/работ); сперва человек коммитит 1.1–1.10 и подтверждает acceptance этапа 1.

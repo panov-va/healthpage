@@ -13,10 +13,12 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1 + 2.2** написаны и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 2.3 — доменный слой плановых работ (scheduled→in_progress→completed;
-авто-перевод компонентов в `under_maintenance` на время работ и обратно) в `internal/domain`.
-Затем 2.4 (авто-производный статус компонентов от активных инцидентов/работ).
+Задачи 1.1–1.10 + фикс main.go + **2.1 + 2.2 + 2.3** написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 2.4 — авто-производный статус компонентов от активных инцидентов/работ
+(DESIGN §3.3, §6): объединить `IncidentComponent.ComponentStatusInIncident` активных инцидентов и
+`Maintenance.ImposedComponentStatus()` активных работ → эффективный статус компонента; при resolve
+инцидента компоненты возвращаются в operational (если оператор не указал иное). Чистая функция
+деривации в `internal/domain` + применение в store/service (запись в историю).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -86,6 +88,26 @@
 ---
 
 ## Что в работе
+
+**Этап 2.3 — доменный слой плановых работ (написано и проверено, ждёт коммита):**
+- `backend/internal/domain/maintenance.go` — чистый домен, по образцу incident.go.
+- Enum `MaintenanceStatus` (scheduled/in_progress/completed) + `IsValid`/`AllMaintenanceStatuses`.
+- Сущности: `Maintenance` (+`ComponentIDs []uuid.UUID` и `Updates []MaintenanceUpdate` —
+  заполняются store; component_ids 1:1 с openapi), `MaintenanceUpdate` (без статуса, в отличие от
+  инцидента — как в openapi/миграции).
+- Предикаты `IsScheduled`/`IsInProgress`/`IsCompleted`, `IsActive`(==in_progress).
+- `ImposedComponentStatus()` → (under_maintenance, true) только во время in_progress, иначе
+  ("",false). Это доменная основа авто-перевода компонентов; фактическое применение (запись в
+  историю, объединение с инцидентами) — задача 2.4.
+- `ApplyStatusChange(status, at)`: in_progress фиксирует StartedAt (если nil) и сбрасывает
+  CompletedAt; completed фиксирует CompletedAt (если nil), StartedAt не трогает; scheduled
+  сбрасывает обе метки. Переходы между валидными статусами не ограничены; невалидный →
+  `ErrInvalidMaintenanceStatus` без мутации.
+- `ValidateSchedule()` → `ErrInvalidSchedule`, если scheduled_end не строго позже scheduled_start
+  (для api на create/patch).
+- Юнит-тесты `maintenance_test.go` (enum, предикаты, imposed-статус, валидация окна, полный
+  жизненный цикл, повторный запуск/сброс, невалидный переход). Build/vet/test/gofmt/lint — зелёные.
+- Контракт/openapi не трогал.
 
 **Этап 2.2 — доменный слой инцидентов (написано и проверено, ждёт коммита):**
 - `backend/internal/domain/incident.go` — чистый домен (без БД/HTTP), по образцу status.go/entities.go.
@@ -403,3 +425,7 @@ _Этап 0 — завершён и закоммичен._
   IncidentComponent/IncidentUpdate, жизненный цикл ApplyStatusChange (ResolvedAt при resolve/
   reopen) + постмортем только после resolved; юнит-тесты. Build/test/lint зелёные. Контракт не
   трогал. Дальше — 2.3 (домен плановых работ), затем 2.4 (авто-производный статус компонентов).
+- 2026-06-28 — Этап 2.3 (доменный слой плановых работ): `internal/domain/maintenance.go` — enum
+  MaintenanceStatus, сущности Maintenance/MaintenanceUpdate, предикаты стадий, ImposedComponentStatus
+  (under_maintenance в in_progress), ApplyStatusChange (StartedAt/CompletedAt), ValidateSchedule;
+  юнит-тесты. Build/test/lint зелёные. Контракт не трогал. Дальше — 2.4 (деривация статуса).

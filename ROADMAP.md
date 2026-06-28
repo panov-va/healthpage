@@ -96,8 +96,13 @@
       `IncidentUpdate`, жизненный цикл `ApplyStatusChange` (фиксация/сброс ResolvedAt при
       resolve/повторном открытии), правило постмортема (только после resolved). Чистый домен,
       юнит-тесты зелёные. Ждёт коммита человеком.
-- [ ] **2.3** Домен плановых работ: scheduled→in_progress→completed; авто-перевод компонентов в
+- [x] **2.3** Домен плановых работ: scheduled→in_progress→completed; авто-перевод компонентов в
       `under_maintenance` на время работ и обратно.
+      — ✅ `internal/domain/maintenance.go`: enum `MaintenanceStatus` (IsValid+All), сущности
+      `Maintenance`/`MaintenanceUpdate`, предикаты стадий + `IsActive`, `ImposedComponentStatus`
+      (under_maintenance во время in_progress — основа авто-перевода, применение в 2.4),
+      `ApplyStatusChange` (фиксация/сброс StartedAt/CompletedAt), `ValidateSchedule` (end>start).
+      Чистый домен, юнит-тесты зелёные. Ждёт коммита человеком.
 - [ ] **2.4** Авто-производный статус компонентов от активных инцидентов/работ (DESIGN §3.3, §6).
 - [ ] **2.5** API инцидентов: create / patch / delete / updates (по openapi.yaml).
 - [ ] **2.6** API работ: create / patch (смена статуса) / delete / updates.

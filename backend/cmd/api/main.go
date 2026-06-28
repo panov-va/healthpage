@@ -53,6 +53,7 @@ func main() {
 		Addr: ":" + cfg.HTTPPort,
 		Handler: api.NewRouter(api.Deps{
 			Auth:       authSvc,
+			Store:      st,
 			Prod:       cfg.IsProd(),
 			RefreshTTL: cfg.RefreshTTL,
 		}),

@@ -103,7 +103,12 @@
       (under_maintenance во время in_progress — основа авто-перевода, применение в 2.4),
       `ApplyStatusChange` (фиксация/сброс StartedAt/CompletedAt), `ValidateSchedule` (end>start).
       Чистый домен, юнит-тесты зелёные. Ждёт коммита человеком.
-- [ ] **2.4** Авто-производный статус компонентов от активных инцидентов/работ (DESIGN §3.3, §6).
+- [x] **2.4** Авто-производный статус компонентов от активных инцидентов/работ (DESIGN §3.3, §6).
+      — ✅ `internal/domain/derive.go`: `DerivedComponentStatus(componentID, incidents, maintenances)
+      → (status, driven)` — худший по §6 среди статусов активных инцидентов и under_maintenance
+      активных работ; нет активных → (operational, false). Soft-deleted/resolved/не-in_progress
+      игнорируются. Чистая функция, применение (запись в историю) — в store/service на 2.5/2.6.
+      Юнит-тесты зелёные. Ждёт коммита человеком.
 - [ ] **2.5** API инцидентов: create / patch / delete / updates (по openapi.yaml).
 - [ ] **2.6** API работ: create / patch (смена статуса) / delete / updates.
 - [ ] **2.7** Шаблоны инцидентов (`IncidentTemplate`).

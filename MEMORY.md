@@ -13,12 +13,14 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1 + 2.2 + 2.3** написаны и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 2.4 — авто-производный статус компонентов от активных инцидентов/работ
-(DESIGN §3.3, §6): объединить `IncidentComponent.ComponentStatusInIncident` активных инцидентов и
-`Maintenance.ImposedComponentStatus()` активных работ → эффективный статус компонента; при resolve
-инцидента компоненты возвращаются в operational (если оператор не указал иное). Чистая функция
-деривации в `internal/domain` + применение в store/service (запись в историю).
+Задачи 1.1–1.10 + фикс main.go + **2.1–2.4** написаны и проверены, ждут коммита человеком.
+Доменный слой инцидентов/работ (2.2–2.4) завершён.
+**Следующий шаг:** Этап 2.5 — store-слой + API инцидентов (create/patch/delete/updates) по
+openapi: store-запросы (sqlc) для incidents/incident_components/incident_updates, маппинг в домен,
+хендлеры под `requireAuth` (авторизация по владению аккаунтом, как в 1.5). При create/update/resolve
+инцидента **применять `domain.DerivedComponentStatus`** к затронутым компонентам (запись в
+component_status_history с source=incident; при driven=false вернуть в operational). Контракт уже
+содержит схемы Incident*/эндпоинты — менять openapi не требуется (свериться при реализации).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -88,6 +90,24 @@
 ---
 
 ## Что в работе
+
+**Этап 2.4 — авто-производный статус компонентов (написано и проверено, ждёт коммита):**
+- `backend/internal/domain/derive.go` — чистая функция деривации, переиспользует `WorstStatus`
+  (§6) и `Maintenance.ImposedComponentStatus()`.
+- `DerivedComponentStatus(componentID, incidents []Incident, maintenances []Maintenance)
+  → (status ComponentStatus, driven bool)`:
+  - худший по приоритету показа (§6) среди: статусов активных инцидентов на этом компоненте
+    (`IncidentComponent.ComponentStatusInIncident`, только `Incident.IsActive`) и
+    `under_maintenance` от активных (in_progress) работ, затрагивающих компонент;
+  - soft-deleted инциденты/работы, resolved-инциденты и не-in_progress работы — игнорируются;
+  - нет активных → `(operational, false)`. **Флаг `driven`**: true → авто-статус навязан
+    (store пишет историю с source=incident/maintenance); false → авто-статус снят, компонент
+    возвращается в operational / остаётся под ручным управлением («если оператор не указал иное», §3.3).
+- Юнит-тесты `derive_test.go`: нет активных; активный инцидент; resolved/deleted игнор; активная/
+  scheduled работа; приоритет major>maintenance>degraded между источниками; worst среди инцидентов;
+  незатронутый компонент. Build/vet/test/gofmt/lint — зелёные. Контракт не трогал.
+- **Применение функции** (запись в component_status_history, авто-апдейт current_status при
+  create/update/resolve) — задача 2.5/2.6 (store/service), здесь только чистая логика.
 
 **Этап 2.3 — доменный слой плановых работ (написано и проверено, ждёт коммита):**
 - `backend/internal/domain/maintenance.go` — чистый домен, по образцу incident.go.
@@ -429,3 +449,7 @@ _Этап 0 — завершён и закоммичен._
   MaintenanceStatus, сущности Maintenance/MaintenanceUpdate, предикаты стадий, ImposedComponentStatus
   (under_maintenance в in_progress), ApplyStatusChange (StartedAt/CompletedAt), ValidateSchedule;
   юнит-тесты. Build/test/lint зелёные. Контракт не трогал. Дальше — 2.4 (деривация статуса).
+- 2026-06-28 — Этап 2.4 (авто-производный статус компонентов): `internal/domain/derive.go` —
+  `DerivedComponentStatus` (худший §6 среди активных инцидентов + under_maintenance активных работ;
+  driven-флаг для возврата в operational/ручное управление); юнит-тесты. Build/test/lint зелёные.
+  Доменный слой этапа 2 (2.2–2.4) завершён. Дальше — 2.5 (store + API инцидентов).

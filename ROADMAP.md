@@ -89,8 +89,13 @@
       incidents/maintenances; FK CASCADE на страницу/компонент; unique компонент-в-инциденте/работе),
       триггеры updated_at. Проверено на PG16: up/status/down/up, FK-каскады, unique, дефолты,
       trigger. Ждёт коммита человеком.
-- [ ] **2.2** Домен инцидентов: жизненный цикл investigating→identified→monitoring→resolved;
+- [x] **2.2** Домен инцидентов: жизненный цикл investigating→identified→monitoring→resolved;
       impact; постмортем; лента обновлений.
+      — ✅ `internal/domain/incident.go`: enum'ы `IncidentStatus`/`IncidentImpact` (IsValid,
+      IsTerminal, impactSeverity+WorstImpact), сущности `Incident`/`IncidentComponent`/
+      `IncidentUpdate`, жизненный цикл `ApplyStatusChange` (фиксация/сброс ResolvedAt при
+      resolve/повторном открытии), правило постмортема (только после resolved). Чистый домен,
+      юнит-тесты зелёные. Ждёт коммита человеком.
 - [ ] **2.3** Домен плановых работ: scheduled→in_progress→completed; авто-перевод компонентов в
       `under_maintenance` на время работ и обратно.
 - [ ] **2.4** Авто-производный статус компонентов от активных инцидентов/работ (DESIGN §3.3, §6).

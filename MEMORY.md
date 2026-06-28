@@ -13,10 +13,10 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1** написаны и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 2.2 — доменный слой инцидентов (жизненный цикл
-investigating→identified→monitoring→resolved; impact; постмортем; лента обновлений) в
-`internal/domain`. Параллельно держать в уме 2.3 (домен работ).
+Задачи 1.1–1.10 + фикс main.go + **2.1 + 2.2** написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 2.3 — доменный слой плановых работ (scheduled→in_progress→completed;
+авто-перевод компонентов в `under_maintenance` на время работ и обратно) в `internal/domain`.
+Затем 2.4 (авто-производный статус компонентов от активных инцидентов/работ).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -86,6 +86,26 @@ investigating→identified→monitoring→resolved; impact; постмортем
 ---
 
 ## Что в работе
+
+**Этап 2.2 — доменный слой инцидентов (написано и проверено, ждёт коммита):**
+- `backend/internal/domain/incident.go` — чистый домен (без БД/HTTP), по образцу status.go/entities.go.
+- Enum'ы (нормативны, как в openapi): `IncidentStatus`
+  (investigating/identified/monitoring/resolved) + `IsValid`/`IsTerminal`+`AllIncidentStatuses`;
+  `IncidentImpact` (none/minor/major/critical) + `IsValid`+`AllIncidentImpacts`, порядок тяжести
+  `impactSeverity` (none0<minor1<major2<critical3) и `WorstImpact` (для агрегации, пустой→none).
+- Сущности: `Incident` (+связи `Components []IncidentComponent`, `Updates []IncidentUpdate`,
+  заполняются store при чтении агрегата), `IncidentComponent`, `IncidentUpdate` — поля 1:1 с
+  таблицами 2.1 и схемами openapi. `IsResolved`/`IsActive`.
+- Жизненный цикл `(*Incident).ApplyStatusChange(status, at)`: переходы между валидными статусами
+  НЕ ограничены (оператор может вернуться назад / повторно открыть); инвариант ResolvedAt —
+  resolve фиксирует время (повторный resolve не сдвигает), переход из resolved в активный сбрасывает.
+  Невалидный статус → `ErrInvalidIncidentStatus`, без мутации.
+- Постмортем: `CanSetPostmortem`/`SetPostmortem` — только после resolved (DESIGN §3.3), иначе
+  `ErrPostmortemBeforeResolved`; пустая строка снимает постмортем.
+- Юнит-тесты `incident_test.go` (валидность enum'ов, WorstImpact, resolve/повторный resolve/
+  reopen, невалидный переход, постмортем до/после resolved). Build/vet/test/gofmt/golangci-lint — зелёные.
+- Контракт/openapi не трогал. [ТРЕБОВАНИЕ §3.3] про авто-возврат компонентов в operational при
+  resolve и авто-производный статус — это задача 2.4 (отдельный слой деривации), здесь не реализуется.
 
 **Этап 2.1 — миграции инцидентов/работ (написано и проверено, ждёт коммита):**
 - `backend/migrations/00006_incidents_maintenances.sql`. Версия БД → 6.
@@ -378,3 +398,8 @@ _Этап 0 — завершён и закоммичен._
   3 нормативных enum'а + 6 таблиц (soft-delete у incidents/maintenances, FK CASCADE, unique
   компонент-в-инциденте/работе, триггеры updated_at). Проверено на PG16 (up/status/down/up,
   каскады, unique, дефолты, trigger). Дальше — 2.2 (доменный слой инцидентов).
+- 2026-06-28 — Этап 2.2 (доменный слой инцидентов): `internal/domain/incident.go` — enum'ы
+  IncidentStatus/IncidentImpact (IsValid/IsTerminal/WorstImpact), сущности Incident/
+  IncidentComponent/IncidentUpdate, жизненный цикл ApplyStatusChange (ResolvedAt при resolve/
+  reopen) + постмортем только после resolved; юнит-тесты. Build/test/lint зелёные. Контракт не
+  трогал. Дальше — 2.3 (домен плановых работ), затем 2.4 (авто-производный статус компонентов).

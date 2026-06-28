@@ -13,10 +13,10 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 написаны и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 2.1 — миграции инцидентов/работ (Incident, IncidentComponent,
-IncidentUpdate, Maintenance, ...; enum'ы incident_status/impact/maintenance_status).
-Перед стартом этапа 2 — дать человеку закоммитить 1.1–1.10 и подтвердить acceptance этапа 1.
+Задачи 1.1–1.10 + фикс main.go + **2.1** написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 2.2 — доменный слой инцидентов (жизненный цикл
+investigating→identified→monitoring→resolved; impact; постмортем; лента обновлений) в
+`internal/domain`. Параллельно держать в уме 2.3 (домен работ).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -86,6 +86,26 @@ IncidentUpdate, Maintenance, ...; enum'ы incident_status/impact/maintenance_sta
 ---
 
 ## Что в работе
+
+**Этап 2.1 — миграции инцидентов/работ (написано и проверено, ждёт коммита):**
+- `backend/migrations/00006_incidents_maintenances.sql`. Версия БД → 6.
+- 3 pg-enum'а (нормативны, как `component_status`): `incident_status`
+  (investigating/identified/monitoring/resolved), `incident_impact` (none/minor/major/critical),
+  `maintenance_status` (scheduled/in_progress/completed).
+- 6 таблиц (имена plural): `incidents`, `incident_components`, `incident_updates`,
+  `maintenances`, `maintenance_components`, `maintenance_updates`.
+  - `incidents`/`maintenances` — soft-delete (`deleted_at`), как пользовательский контент.
+  - FK на `status_pages`/`components` — `ON DELETE CASCADE`. Удаление страницы/компонента чистит
+    связанные инциденты/работы и их связи.
+  - unique компонент-в-инциденте (`incident_components_unique`) и компонент-в-работе
+    (`maintenance_components_unique`).
+  - `maintenances.status` DEFAULT `scheduled`; `incidents.is_visible` DEFAULT true;
+    `current_status`/`impact` инцидента — NOT NULL без дефолта (всегда задаются при создании).
+  - created_at/updated_at + триггер `set_updated_at()` на всех 6 таблицах (DESIGN §5).
+- Проверено на живом PG16: up→v6, status, down (таблицы и enum'ы исчезают без остатка), up снова
+  чисто; FK-каскады (компонент→incident/maintenance_components; инцидент→updates; страница→всё),
+  unique, дефолты, срабатывание updated_at-триггера.
+- Контракт/openapi/доменный слой не трогал — это только миграция. Домен — задача 2.2/2.3.
 
 **Этап 1.10 — админка React+FSD (написано и собрано, ждёт коммита):**
 - Стек: `frontend/admin` (Vite+React+TS), добавлен **react-router-dom@6**. Типы API берутся из
@@ -354,3 +374,7 @@ _Этап 0 — завершён и закоммичен._
   удаления). **Попутно исправлен баг 1.5: `main.go` не прокидывал Store в `api.Deps`** (panic на
   всех управляющих эндпоинтах). Дальше — этап 2.1 (миграции инцидентов/работ); сперва человек
   коммитит 1.1–1.10 + фикс main.go и подтверждает acceptance этапа 1.
+- 2026-06-28 — Этап 2.1 (миграции инцидентов/работ): `00006_incidents_maintenances.sql` —
+  3 нормативных enum'а + 6 таблиц (soft-delete у incidents/maintenances, FK CASCADE, unique
+  компонент-в-инциденте/работе, триггеры updated_at). Проверено на PG16 (up/status/down/up,
+  каскады, unique, дефолты, trigger). Дальше — 2.2 (доменный слой инцидентов).

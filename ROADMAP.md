@@ -82,9 +82,13 @@
 
 Зависит от: 1. DESIGN §3.3, §3.4, §6.
 
-- [ ] **2.1** Миграции: `Incident`, `IncidentComponent`, `IncidentUpdate`, `Maintenance`,
+- [x] **2.1** Миграции: `Incident`, `IncidentComponent`, `IncidentUpdate`, `Maintenance`,
       `MaintenanceComponent`, `MaintenanceUpdate`. Enum'ы `incident_status`, `incident_impact`,
       `maintenance_status`.
+      — ✅ `00006_incidents_maintenances.sql`: 3 pg-enum'а (нормативны), 6 таблиц (soft-delete у
+      incidents/maintenances; FK CASCADE на страницу/компонент; unique компонент-в-инциденте/работе),
+      триггеры updated_at. Проверено на PG16: up/status/down/up, FK-каскады, unique, дефолты,
+      trigger. Ждёт коммита человеком.
 - [ ] **2.2** Домен инцидентов: жизненный цикл investigating→identified→monitoring→resolved;
       impact; постмортем; лента обновлений.
 - [ ] **2.3** Домен плановых работ: scheduled→in_progress→completed; авто-перевод компонентов в

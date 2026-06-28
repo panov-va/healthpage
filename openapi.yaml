@@ -1315,8 +1315,9 @@ components:
 
     IncidentCreate:
       type: object
-      required: [title, status, impact, body]
+      required: [status_page_id, title, status, impact, body]
       properties:
+        status_page_id: { type: string, format: uuid, description: "Страница, к которой относится инцидент" }
         title: { type: string }
         status: { $ref: '#/components/schemas/IncidentStatus' }
         impact: { $ref: '#/components/schemas/IncidentImpact' }

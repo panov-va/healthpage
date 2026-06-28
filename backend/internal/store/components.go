@@ -149,6 +149,23 @@ func (s *Store) ChangeComponentStatus(
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := s.q.WithTx(tx)
 
+	updated, err := changeComponentStatusTx(ctx, q, componentID, status, source)
+	if err != nil {
+		return domain.Component{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Component{}, fmt.Errorf("store: commit: %w", err)
+	}
+	return updated, nil
+}
+
+// changeComponentStatusTx выполняет смену статуса в рамках переданной транзакции (close period →
+// set status → open period). Используется как ручной сменой (ChangeComponentStatus), так и
+// авто-деривацией от инцидентов/работ (recomputeComponentStatusesTx).
+func changeComponentStatusTx(
+	ctx context.Context, q *db.Queries, componentID uuid.UUID,
+	status domain.ComponentStatus, source domain.HistorySource,
+) (domain.Component, error) {
 	if err := q.CloseOpenStatusPeriod(ctx, componentID); err != nil {
 		return domain.Component{}, fmt.Errorf("store: close period: %w", err)
 	}
@@ -162,9 +179,6 @@ func (s *Store) ChangeComponentStatus(
 		ComponentID: componentID, Status: db.ComponentStatus(status), Source: string(source),
 	}); err != nil {
 		return domain.Component{}, fmt.Errorf("store: open period: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return domain.Component{}, fmt.Errorf("store: commit: %w", err)
 	}
 	return mapComponent(updated), nil
 }

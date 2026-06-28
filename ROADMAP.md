@@ -109,7 +109,17 @@
       активных работ; нет активных → (operational, false). Soft-deleted/resolved/не-in_progress
       игнорируются. Чистая функция, применение (запись в историю) — в store/service на 2.5/2.6.
       Юнит-тесты зелёные. Ждёт коммита человеком.
-- [ ] **2.5** API инцидентов: create / patch / delete / updates (по openapi.yaml).
+- [x] **2.5** API инцидентов: create / patch / delete / updates (по openapi.yaml).
+      — ✅ sqlc-запросы incidents/incident_components/incident_updates → store (`incidents.go`):
+      CreateIncident (+стартовое обновление), IncidentByID (агрегат), UpdateIncident (replace
+      components), AddIncidentUpdate (смена статуса инцидента), SoftDeleteIncident; всё транзакционно,
+      с **авто-деривацией статуса компонентов** (`recomputeComponentStatusesTx` → `domain.DerivedComponentStatus`,
+      запись в историю с source=incident). API (`api/incidents.go`): POST `/incidents`,
+      PATCH/DELETE `/incidents/{id}`, POST `/incidents/{id}/updates` под requireAuth, авторизация по
+      владению страницей, валидация enum'ов и принадлежности компонентов странице. **Контракт:**
+      добавлен `status_page_id` в `IncidentCreate` (решение человека, как в 1.5), типы перегенерированы.
+      Интеграционный тест на реальном PG16 (создание→деривация→обновления→resolve→возврат компонента→
+      постмортем→изоляция→401). Ждёт коммита человеком.
 - [ ] **2.6** API работ: create / patch (смена статуса) / delete / updates.
 - [ ] **2.7** Шаблоны инцидентов (`IncidentTemplate`).
 - [ ] **2.8** Публичные: история инцидентов с фильтрами (компонент, impact) + пагинация;

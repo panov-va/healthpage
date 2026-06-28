@@ -76,6 +76,11 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/components", s.handleCreateComponent)
 			r.Patch("/components/{id}", s.handlePatchComponent)
 			r.Delete("/components/{id}", s.handleDeleteComponent)
+
+			r.Post("/incidents", s.handleCreateIncident)
+			r.Patch("/incidents/{id}", s.handlePatchIncident)
+			r.Delete("/incidents/{id}", s.handleDeleteIncident)
+			r.Post("/incidents/{id}/updates", s.handleAddIncidentUpdate)
 		})
 	})
 

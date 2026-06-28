@@ -13,14 +13,15 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1–2.4** написаны и проверены, ждут коммита человеком.
-Доменный слой инцидентов/работ (2.2–2.4) завершён.
-**Следующий шаг:** Этап 2.5 — store-слой + API инцидентов (create/patch/delete/updates) по
-openapi: store-запросы (sqlc) для incidents/incident_components/incident_updates, маппинг в домен,
-хендлеры под `requireAuth` (авторизация по владению аккаунтом, как в 1.5). При create/update/resolve
-инцидента **применять `domain.DerivedComponentStatus`** к затронутым компонентам (запись в
-component_status_history с source=incident; при driven=false вернуть в operational). Контракт уже
-содержит схемы Incident*/эндпоинты — менять openapi не требуется (свериться при реализации).
+Задачи 1.1–1.10 + фикс main.go + **2.1–2.5** написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 2.6 — store + API плановых работ (create/patch[смена статуса]/delete/updates)
+по openapi. Структурно зеркалит 2.5: queries maintenances/maintenance_components/maintenance_updates,
+store с авто-переводом компонентов в under_maintenance (при in_progress) и обратно, API под requireAuth.
+**ВАЖНО для 2.6:** (1) добавить `status_page_id` в `MaintenanceCreate` (решение человека уже получено,
+как в 2.5) + перегенерировать типы; (2) **расширить `recomputeComponentStatusesTx`** (store/incidents.go) —
+сейчас передаёт в `DerivedComponentStatus` только активные инциденты и `nil` работ; 2.6 должен грузить
+активные (in_progress) работы страницы и передавать их, иначе авто-under_maintenance не сработает
+(см. TODO в коде recompute). Лучше вынести recompute в общий store-хелпер, читающий и инциденты, и работы.
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -90,6 +91,40 @@ component_status_history с source=incident; при driven=false вернуть 
 ---
 
 ## Что в работе
+
+**Этап 2.5 — store + API инцидентов (написано и проверено на живом PG, ждёт коммита):**
+- **Контракт:** в `IncidentCreate` добавлен обязательный `status_page_id` (uuid) — решение человека
+  (зеркалит 1.5 для компонентов; флэт-роуты создания, авторизация по владению страницей). Типы
+  перегенерированы (TS+Go). MaintenanceCreate пока НЕ трогал — это 2.6.
+- **sqlc:** новый `internal/store/queries/incidents.sql` → перегенерирован `internal/store/db`.
+  ⚠️ sqlc локально поставлен через brew — **версия 1.31.1** (в заголовках сгенерированных файлов
+  было 1.27.0; CI-скрипт `gen-sqlc.sh` пинит `go run ...@v1.27.0`, который на macOS не собирается из-за
+  cgo/pg_query). Функциональный код идентичен, изменилась только строка версии в заголовках. Если
+  важна консистентность — перегенерировать на CI (linux) вернёт 1.27.0.
+- **store** (`internal/store/incidents.go`): `CreateIncident` (incident + стартовое обновление +
+  incident_components + рекомпьют), `IncidentByID` (агрегат: строка+компоненты+лента),
+  `UpdateIncident(inc, replaceComponents)` (affected = старые∪новые компоненты), `AddIncidentUpdate`
+  (грузит инцидент → `domain.ApplyStatusChange` → пишет update + новый current_status/resolved_at →
+  рекомпьют), `SoftDeleteIncident` (рекомпьют, инцидент перестаёт быть активным). Всё в транзакциях.
+- **Авто-деривация** `recomputeComponentStatusesTx(tx, pageID, componentIDs)`: грузит активные
+  incident_components страницы (`ListActiveIncidentComponentStatuses`), зовёт
+  `domain.DerivedComponentStatus`, и при изменении пишет статус через `changeComponentStatusTx`
+  (рефакторинг: `ChangeComponentStatus` теперь обёртка над tx-хелпером) с source=incident. Если
+  активных инцидентов на компонент нет → возврат в operational.
+  ⚠️ **TODO 2.6:** recompute передаёт `nil` вместо активных работ → авто-under_maintenance не
+  учитывается (сейчас безопасно: API работ ещё нет). 2.6 обязан расширить (см. «Следующий шаг»).
+- **Известное упрощение (флаг человеку):** при возврате компонента из инцидента ставится
+  `operational`, ручной «базовый» статус не сохраняется (нет колонки baseline). DESIGN §3.3
+  «если оператор не указал иное» в полном виде требовал бы baseline — отложено (возможная схема позже).
+- **API** (`internal/api/incidents.go`): `POST /incidents`, `PATCH /incidents/{id}` (title/impact/
+  postmortem/is_visible/components; постмортем только для resolved → иначе 422), `DELETE /incidents/{id}`,
+  `POST /incidents/{id}/updates` (смена статуса + запись в ленту). Все под `requireAuth`, авторизация
+  `authorizePage`. Валидация: enum'ы status/impact/component_status, принадлежность каждого компонента
+  странице (изоляция), started_at RFC3339. DTO синхронны с openapi.
+- **Интеграционный тест** `incidents_integration_test.go` (skip без HEALTHPAGE_TEST_DB): создание →
+  авто-major_outage компонента → публичная сводка → update identified → resolve → возврат компонента в
+  operational → постмортем (ок после resolved; 422 до) → невалидный статус 422 → изоляция операторов
+  (404) → повторный delete 404 → 401. **PASS на реальном PG16.** Build/test/vet/gofmt/golangci-lint зелёные.
 
 **Этап 2.4 — авто-производный статус компонентов (написано и проверено, ждёт коммита):**
 - `backend/internal/domain/derive.go` — чистая функция деривации, переиспользует `WorstStatus`
@@ -453,3 +488,9 @@ _Этап 0 — завершён и закоммичен._
   `DerivedComponentStatus` (худший §6 среди активных инцидентов + under_maintenance активных работ;
   driven-флаг для возврата в operational/ручное управление); юнит-тесты. Build/test/lint зелёные.
   Доменный слой этапа 2 (2.2–2.4) завершён. Дальше — 2.5 (store + API инцидентов).
+- 2026-06-28 — Этап 2.5 (store + API инцидентов): sqlc-запросы incidents/*, store с транзакциями и
+  авто-деривацией статуса компонентов (recomputeComponentStatusesTx → domain.DerivedComponentStatus,
+  source=incident), API POST/PATCH/DELETE /incidents + /incidents/{id}/updates под requireAuth.
+  Контракт: +status_page_id в IncidentCreate (решение человека), типы перегенерированы. sqlc bump
+  1.27.0→1.31.1 (brew). Интеграционный тест на реальном PG16 PASS. Дальше — 2.6 (store + API работ;
+  обязательно расширить recompute активными работами).

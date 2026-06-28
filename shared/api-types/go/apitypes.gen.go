@@ -342,7 +342,10 @@ type IncidentCreate struct {
 	Notify     *bool                `json:"notify,omitempty"`
 	StartedAt  *time.Time           `json:"started_at,omitempty"`
 	Status     IncidentStatus       `json:"status"`
-	Title      string               `json:"title"`
+
+	// StatusPageId Страница, к которой относится инцидент
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
+	Title        string             `json:"title"`
 }
 
 // IncidentImpact defines model for IncidentImpact.

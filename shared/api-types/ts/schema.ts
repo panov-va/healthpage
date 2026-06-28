@@ -2354,6 +2354,11 @@ export interface components {
             updates?: components["schemas"]["IncidentUpdate"][];
         };
         IncidentCreate: {
+            /**
+             * Format: uuid
+             * @description Страница, к которой относится инцидент
+             */
+            status_page_id: string;
             title: string;
             status: components["schemas"]["IncidentStatus"];
             impact: components["schemas"]["IncidentImpact"];

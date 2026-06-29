@@ -251,7 +251,16 @@
       тест на PG16 (subscribe→202+письмо→pending; повтор→перевыпуск; старый токен 400; confirm→200+
       confirmed; повтор confirm 400; подтверждённый→202 без письма; unsubscribe→200+удалён; негативы).
       build/test/vet/gofmt/golangci-lint зелёные. Ждёт коммита.
-- [ ] **3.6** RSS/Atom фид и iCal-фид (публичные эндпоинты).
+- [x] **3.6** RSS/Atom фид и iCal-фид (публичные эндпоинты).
+      — ✅ Контракт НЕ менялся (`GET /pages/{slug}/rss`, `GET /pages/{slug}/calendar.ics` уже в openapi).
+      Пакет `internal/feed` (чистые билдеры): `BuildRSS` (RSS 2.0 через encoding/xml — инциденты+работы,
+      последние 50 по дате, descr инцидента из последнего апдейта, ссылки на /status/<slug>/...),
+      `BuildICal` (RFC 5545: VEVENT на работу, DTSTART/DTEND в UTC basic, escapeText, фолдинг 75 октетов,
+      CRLF, STATUS scheduled→TENTATIVE иначе CONFIRMED). API `feed.go` (публичные, без авторизации):
+      `handleRSS`/`handleICal` через loadPublicPage (приватная→404) + ListPublicIncidents/
+      ListPublicMaintenances; `writeRaw` с нужным Content-Type. `Deps.BaseURL`=cfg.BaseURL. Юнит-тесты
+      (RSS parse/порядок/escaping, iCal поля/escaping/фолдинг) + интеграционный на PG16 (RSS+iCal
+      content-type и содержимое, приватная→404). build/test/vet/gofmt/golangci-lint зелёные. Ждёт коммита.
 - [ ] **3.7** `worker-telegram`: бот, подписка на страницу/компоненты, доставка.
 - [ ] **3.8** `worker-max`: MAX Bot API, подписка, доставка; троттлинг ~30 rps.
       ⚠️ Зависит от организационной готовности (верификация самозанятого + модерация бота).

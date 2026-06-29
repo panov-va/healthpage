@@ -13,12 +13,14 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1–3.5 готовы по коду, ждут коммита.
+**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1–3.6 готовы по коду, ждут коммита.
 Этапы 1–2 закоммичены человеком.
-**Следующий шаг:** Этап 3.6 — публичные фиды: RSS/Atom инцидентов и iCal плановых работ
-(`GET /pages/{slug}/feed.rss`/`.atom`/`.ics` — свериться с openapi на точные пути). Чистые сериализаторы
-поверх уже готовых store-методов (`ListPublicIncidents`/`ListPublicMaintenances`); без рассылки, без
-авторизации (публично). Затем 3.7 (telegram), 3.8 (max), 3.9 (slack), 3.10 (управление подписчиками).
+**Следующий шаг:** Этап 3.7 — `worker-telegram`: бот (Telegram Bot API), подписка на страницу/
+компоненты, доставка. По образцу worker-email: consumer `q.telegram` (manual ack), `Worker.Process`
+с идемпотентностью по Notification.id, рендер сообщения, ретрай через `notify.Engine.Retry`. Подписка
+через бот (команда /start с deep-link на страницу) — НЕ через `POST /subscribe` (тот пока только email).
+Нужен `TELEGRAM_BOT_TOKEN` (организационно — создать бота у @BotFather). Затем 3.8 (max), 3.9 (slack),
+3.10 (управление подписчиками в админке).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -116,6 +118,27 @@
   `queue_integration_test.go` (skip без `HEALTHPAGE_TEST_AMQP`): publisher confirm + маршрутизация →
   q.email; Nack(requeue=false) → dead-letter в q.dlq.email; delayed-публикация приходит через ~1s.
   **PASS.** go build/vet/gofmt/golangci-lint зелёные; backend и rabbitmq образы собираются.
+
+**Этап 3.6 — публичные фиды RSS/iCal (написано, проверено на PG16, ждёт коммита):**
+- **Контракт НЕ менялся** — `GET /pages/{slug}/rss` (application/rss+xml), `GET /pages/{slug}/calendar.ics`
+  (text/calendar) уже в openapi (tag Public, security[]).
+- **Пакет `internal/feed`** (чистые билдеры, без БД/HTTP): `BuildRSS(page, incidents, maintenances,
+  baseURL)` — RSS 2.0 через encoding/xml (экранирование штатное); инциденты+работы единым фидом,
+  сортировка по дате desc, лимит 50; описание инцидента — из последнего по CreatedAt апдейта; ссылки
+  baseURL+/status/<slug>/incidents/<id> и /maintenances; guid `incident:`/`maintenance:`+id.
+  `BuildICal(page, maintenances, baseURL, now)` — RFC 5545: VCALENDAR + VEVENT на работу, DTSTART/DTEND/
+  DTSTAMP в UTC basic (`20060102T150405Z`), `escapeText` (\\ ; , \n), фолдинг строк >75 октетов, CRLF,
+  STATUS scheduled→TENTATIVE иначе CONFIRMED, UID `maintenance-<id>@healthpage`.
+- **API `feed.go`** (публичные): `handleRSS`/`handleICal` через `loadPublicPage` (приватная/нет → 404) +
+  `ListPublicIncidents(filter{},50,0)`/`ListPublicMaintenances(nil,50,0)`; хелпер `writeRaw`
+  (Content-Type+body). Роуты в публичной группе server.go. `Deps.BaseURL`=cfg.BaseURL (main.go).
+- **Флаги:** (1) фид берёт последние 50 записей (без пагинации — для фида достаточно). (2) ссылки на
+  /status/<slug>/... используют BASE_URL (как и письма; в проде нужен публичный URL public-ssr —
+  тот же флаг, что в 3.4). (3) iCal включает работы всех статусов (вкл. completed) из последних 50.
+- **Проверено:** юнит `feed_test` (RSS parse+порядок+escaping round-trip; iCal поля/DTSTART-формат/
+  escaping ;,\n/фолдинг 75/CRLF/STATUS) + интеграционный `feed_integration_test` на PG16 (RSS:
+  content-type+обе записи+ссылка; iCal: content-type+VEVENT+SUMMARY; приватная страница→404).
+  build/test/vet/gofmt/golangci-lint зелёные.
 
 **Этап 3.5 — эндпоинты подписки (написано, проверено на PG16, ждёт коммита):**
 - **Контракт НЕ менялся** — `POST /pages/{slug}/subscribe`, `GET /subscribe/confirm`, `GET /unsubscribe`

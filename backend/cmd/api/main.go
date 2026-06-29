@@ -62,6 +62,7 @@ func main() {
 			Store:      st,
 			Notifier:   notifier,
 			SubSecret:  cfg.SubscriptionSecret,
+			BaseURL:    cfg.BaseURL,
 			Prod:       cfg.IsProd(),
 			RefreshTTL: cfg.RefreshTTL,
 		}),

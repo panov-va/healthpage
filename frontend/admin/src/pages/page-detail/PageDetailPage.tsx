@@ -12,6 +12,7 @@ import { CreateGroupForm } from "@/features/group-create";
 import { HttpError } from "@/shared/api";
 import { Button, Card } from "@/shared/ui";
 import { ComponentTree } from "@/widgets/component-tree";
+import { PageNav } from "@/widgets/page-nav";
 
 export function PageDetailPage() {
   const { id = "" } = useParams();
@@ -74,6 +75,7 @@ export function PageDetailPage() {
         <div className="hp-muted" style={{ fontSize: 13 }}>
           /{page.slug} · {page.visibility === "private" ? "приватная" : "публичная"}
         </div>
+        <PageNav pageId={id} />
       </div>
 
       <Card>

@@ -159,7 +159,18 @@
       (не resolved, видимые), `active_maintenances` (не completed: scheduled+in_progress). Невалидный
       фильтр → 422. Интеграционный тест на PG16 (фильтры/пагинация/скрытые/detail/работы/сводка) PASS.
       Build/test/vet/gofmt/lint зелёные. Ждёт коммита человеком.
-- [ ] **2.9** Админка: создание/ведение инцидентов (лента обновлений) и работ; UI фильтров.
+- [x] **2.9** Админка: создание/ведение инцидентов (лента обновлений) и работ; UI фильтров.
+      — ✅ FSD-слои: `entities` incident/maintenance/incidentTemplate (api-обёртки); `features`
+      incident-create (+UI «применить шаблон»: префилл из IncidentTemplate)/incident-update (смена
+      статуса через ленту)/incident-edit (impact/видимость/постмортем-после-resolved/компоненты),
+      maintenance-create/maintenance-edit (lifecycle-статус)/maintenance-update (заметка),
+      template-form (CRUD); `widgets` affected-components (переиспользуется инцидентом+шаблоном),
+      component-checklist (работы), page-nav (вкладки разделов); `pages` incidents (список+фильтры
+      status/impact/компонент+пагинация / detail с лентой), maintenances (список+фильтр / detail),
+      templates. Роуты `/pages/:id/{incidents,maintenances,templates}` + detail. Типы из `@api-types`.
+      **Листинг — через ПУБЛИЧНЫЕ `/pages/{slug}/...`** (админских list-эндпоинтов в контракте нет);
+      ⚠️ скрытые инциденты (is_visible=false) в списке/detail недоступны — нужен админский read-API
+      (контракт, решение человека). `npm run build` зелёный; e2e-смоук на живом стеке PASS. Ждёт коммита.
 - [ ] **2.10** Публичный SSR: вкладки «Инциденты» и «Плановые работы», детальные страницы.
 
 **Acceptance:** полный жизненный цикл инцидента отражается на публичной странице и в истории;

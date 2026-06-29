@@ -240,3 +240,62 @@ h3 {
   align-items: flex-end;
   flex-wrap: wrap;
 }
+
+/* ── tabs (подразделы страницы) ── */
+.hp-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.hp-tab {
+  padding: 8px 14px;
+  font-size: 14px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.hp-tab:hover {
+  text-decoration: none;
+  color: var(--text);
+}
+.hp-tab--active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 500;
+}
+
+/* ── filters row ── */
+.hp-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.hp-filters .hp-field {
+  margin-bottom: 0;
+  min-width: 160px;
+}
+
+/* ── badge ── */
+.hp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── timeline (лента обновлений) ── */
+.hp-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hp-timeline-item {
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}

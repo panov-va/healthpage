@@ -77,9 +77,12 @@ func (s *Store) IncidentByID(ctx context.Context, id uuid.UUID) (domain.Incident
 	if err != nil {
 		return domain.Incident{}, wrapNotFound(err)
 	}
-	inc := mapIncident(row)
+	return s.hydrateIncident(ctx, mapIncident(row))
+}
 
-	comps, err := s.q.ListIncidentComponents(ctx, id)
+// hydrateIncident догружает в инцидент его компоненты и ленту обновлений (по inc.ID).
+func (s *Store) hydrateIncident(ctx context.Context, inc domain.Incident) (domain.Incident, error) {
+	comps, err := s.q.ListIncidentComponents(ctx, inc.ID)
 	if err != nil {
 		return domain.Incident{}, fmt.Errorf("store: list incident components: %w", err)
 	}
@@ -88,7 +91,7 @@ func (s *Store) IncidentByID(ctx context.Context, id uuid.UUID) (domain.Incident
 		inc.Components[i] = mapIncidentComponent(c)
 	}
 
-	updates, err := s.q.ListIncidentUpdates(ctx, id)
+	updates, err := s.q.ListIncidentUpdates(ctx, inc.ID)
 	if err != nil {
 		return domain.Incident{}, fmt.Errorf("store: list incident updates: %w", err)
 	}
@@ -97,6 +100,78 @@ func (s *Store) IncidentByID(ctx context.Context, id uuid.UUID) (domain.Incident
 		inc.Updates[i] = mapIncidentUpdate(u)
 	}
 	return inc, nil
+}
+
+// IncidentFilter — опциональные фильтры публичной истории инцидентов (DESIGN §3.3).
+type IncidentFilter struct {
+	Status      *domain.IncidentStatus
+	Impact      *domain.IncidentImpact
+	ComponentID *uuid.UUID
+}
+
+// ListPublicIncidents возвращает страницу публичной истории инцидентов (видимые, не удалённые)
+// с фильтрами и пагинацией, а также общее число подходящих записей. limit/offset — нормализованы
+// вызывающим. Каждый инцидент — полный агрегат (компоненты + лента).
+func (s *Store) ListPublicIncidents(
+	ctx context.Context, pageID uuid.UUID, f IncidentFilter, limit, offset int,
+) ([]domain.Incident, int, error) {
+	var status db.NullIncidentStatus
+	if f.Status != nil {
+		status = db.NullIncidentStatus{IncidentStatus: db.IncidentStatus(*f.Status), Valid: true}
+	}
+	var impact db.NullIncidentImpact
+	if f.Impact != nil {
+		impact = db.NullIncidentImpact{IncidentImpact: db.IncidentImpact(*f.Impact), Valid: true}
+	}
+
+	rows, err := s.q.ListPublicIncidents(ctx, db.ListPublicIncidentsParams{
+		StatusPageID: pageID,
+		Status:       status,
+		Impact:       impact,
+		ComponentID:  f.ComponentID,
+		Lim:          int32(limit),
+		Off:          int32(offset),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list public incidents: %w", err)
+	}
+	total, err := s.q.CountPublicIncidents(ctx, db.CountPublicIncidentsParams{
+		StatusPageID: pageID,
+		Status:       status,
+		Impact:       impact,
+		ComponentID:  f.ComponentID,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: count public incidents: %w", err)
+	}
+
+	out := make([]domain.Incident, len(rows))
+	for i, row := range rows {
+		hydrated, err := s.hydrateIncident(ctx, mapIncident(row))
+		if err != nil {
+			return nil, 0, err
+		}
+		out[i] = hydrated
+	}
+	return out, int(total), nil
+}
+
+// ListActiveIncidents возвращает активные (не resolved, видимые) инциденты страницы для публичной
+// сводки — полными агрегатами.
+func (s *Store) ListActiveIncidents(ctx context.Context, pageID uuid.UUID) ([]domain.Incident, error) {
+	rows, err := s.q.ListActivePublicIncidents(ctx, pageID)
+	if err != nil {
+		return nil, fmt.Errorf("store: list active incidents: %w", err)
+	}
+	out := make([]domain.Incident, len(rows))
+	for i, row := range rows {
+		hydrated, err := s.hydrateIncident(ctx, mapIncident(row))
+		if err != nil {
+			return nil, err
+		}
+		out[i] = hydrated
+	}
+	return out, nil
 }
 
 // UpdateIncident сохраняет изменённые поля инцидента (вызывающий уже применил domain-логику в

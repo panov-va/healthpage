@@ -75,6 +75,36 @@ func (q *Queries) AddIncidentUpdate(ctx context.Context, arg AddIncidentUpdatePa
 	return i, err
 }
 
+const countPublicIncidents = `-- name: CountPublicIncidents :one
+SELECT count(*) FROM incidents
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND is_visible = true
+  AND ($2::incident_status IS NULL OR current_status = $2)
+  AND ($3::incident_impact IS NULL OR impact = $3)
+  AND ($4::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = $4))
+`
+
+type CountPublicIncidentsParams struct {
+	StatusPageID uuid.UUID
+	Status       NullIncidentStatus
+	Impact       NullIncidentImpact
+	ComponentID  *uuid.UUID
+}
+
+func (q *Queries) CountPublicIncidents(ctx context.Context, arg CountPublicIncidentsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPublicIncidents,
+		arg.StatusPageID,
+		arg.Status,
+		arg.Impact,
+		arg.ComponentID,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createIncident = `-- name: CreateIncident :one
 
 INSERT INTO incidents (
@@ -194,6 +224,49 @@ func (q *Queries) ListActiveIncidentComponentStatuses(ctx context.Context, statu
 	return items, nil
 }
 
+const listActivePublicIncidents = `-- name: ListActivePublicIncidents :many
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at FROM incidents
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND is_visible = true
+  AND current_status <> 'resolved'
+ORDER BY started_at DESC
+`
+
+// Активные (не resolved, видимые) инциденты страницы — для публичной сводки.
+func (q *Queries) ListActivePublicIncidents(ctx context.Context, statusPageID uuid.UUID) ([]Incident, error) {
+	rows, err := q.db.Query(ctx, listActivePublicIncidents, statusPageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Incident{}
+	for rows.Next() {
+		var i Incident
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatusPageID,
+			&i.Title,
+			&i.CurrentStatus,
+			&i.Impact,
+			&i.StartedAt,
+			&i.ResolvedAt,
+			&i.Postmortem,
+			&i.IsVisible,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIncidentComponents = `-- name: ListIncidentComponents :many
 SELECT id, incident_id, component_id, component_status_in_incident, created_at, updated_at FROM incident_components WHERE incident_id = $1 ORDER BY created_at
 `
@@ -246,6 +319,70 @@ func (q *Queries) ListIncidentUpdates(ctx context.Context, incidentID uuid.UUID)
 			&i.NotifySubscribers,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPublicIncidents = `-- name: ListPublicIncidents :many
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at FROM incidents
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND is_visible = true
+  AND ($2::incident_status IS NULL OR current_status = $2)
+  AND ($3::incident_impact IS NULL OR impact = $3)
+  AND ($4::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = $4))
+ORDER BY started_at DESC
+LIMIT $6 OFFSET $5
+`
+
+type ListPublicIncidentsParams struct {
+	StatusPageID uuid.UUID
+	Status       NullIncidentStatus
+	Impact       NullIncidentImpact
+	ComponentID  *uuid.UUID
+	Off          int32
+	Lim          int32
+}
+
+// Публичная история инцидентов страницы: только видимые и не удалённые, с опциональными
+// фильтрами (статус, impact, затронутый компонент) и пагинацией (DESIGN §3.3).
+func (q *Queries) ListPublicIncidents(ctx context.Context, arg ListPublicIncidentsParams) ([]Incident, error) {
+	rows, err := q.db.Query(ctx, listPublicIncidents,
+		arg.StatusPageID,
+		arg.Status,
+		arg.Impact,
+		arg.ComponentID,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Incident{}
+	for rows.Next() {
+		var i Incident
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatusPageID,
+			&i.Title,
+			&i.CurrentStatus,
+			&i.Impact,
+			&i.StartedAt,
+			&i.ResolvedAt,
+			&i.Postmortem,
+			&i.IsVisible,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}

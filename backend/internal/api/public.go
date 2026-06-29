@@ -26,8 +26,8 @@ type pageSummaryResponse struct {
 	UpdatedAt           string                `json:"updated_at"`
 	Groups              []publicGroupResponse `json:"groups"`
 	UngroupedComponents []componentResponse   `json:"ungrouped_components"`
-	ActiveIncidents     []any                 `json:"active_incidents"`
-	ActiveMaintenances  []any                 `json:"active_maintenances"`
+	ActiveIncidents     []incidentResponse    `json:"active_incidents"`
+	ActiveMaintenances  []maintenanceResponse `json:"active_maintenances"`
 }
 
 // loadPublicPage загружает публичную страницу по slug. Приватные страницы недоступны анонимно
@@ -68,13 +68,24 @@ func (s *server) handlePublicSummary(w http.ResponseWriter, r *http.Request) {
 
 	summary := domain.BuildPublicSummary(groups, components)
 
+	activeIncidents, err := s.store.ListActiveIncidents(r.Context(), page.ID)
+	if err != nil {
+		writeServerError(w, err)
+		return
+	}
+	activeMaintenances, err := s.store.ListActiveMaintenances(r.Context(), page.ID)
+	if err != nil {
+		writeServerError(w, err)
+		return
+	}
+
 	resp := pageSummaryResponse{
 		OverallStatus:       string(summary.OverallStatus),
 		UpdatedAt:           summaryUpdatedAt(page, components).UTC().Format(time.RFC3339),
 		Groups:              make([]publicGroupResponse, len(summary.Groups)),
 		UngroupedComponents: toComponentResponses(summary.Ungrouped),
-		ActiveIncidents:     []any{}, // этап 2
-		ActiveMaintenances:  []any{}, // этап 2
+		ActiveIncidents:     toIncidentResponses(activeIncidents),
+		ActiveMaintenances:  toMaintenanceResponses(activeMaintenances),
 	}
 	for i, g := range summary.Groups {
 		resp.Groups[i] = publicGroupResponse{

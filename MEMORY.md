@@ -13,13 +13,11 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1–2.7** написаны и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 2.8 — публичные: история инцидентов с фильтрами (компонент, impact) +
-пагинация; детальная страница инцидента; список работ. ВАЖНО: `active_incidents`/`active_maintenances`
-в публичной сводке (`api/public.go`) всё ещё `[]` — 2.8 их наполняет (+ публичные read-only
-эндпоинты истории/списков по openapi; сверься со схемами IncidentList/MaintenanceList и path'ами
-`/pages/{slug}/incidents`, `/pages/{slug}/maintenances`). Затем 2.9 (админка инцидентов/работ/
-шаблонов; здесь же UI «применить шаблон» — префилл формы инцидента) и 2.10 (публичный SSR).
+Задачи 1.1–1.10 + фикс main.go + **2.1–2.8** написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 2.9 — админка (React+FSD): создание/ведение инцидентов (лента обновлений)
+и работ; UI фильтров; здесь же UI «применить шаблон» (префилл формы инцидента из IncidentTemplate →
+POST /incidents). entities: incident/maintenance/incidentTemplate; features: создание/обновление/
+смена статуса. Типы из `@api-types`. Затем 2.10 (публичный SSR: вкладки Инциденты/Работы + detail).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -89,6 +87,34 @@
 ---
 
 ## Что в работе
+
+**Этап 2.8 — публичная история инцидентов/работ + наполнение сводки (написано и проверено на PG, ждёт коммита):**
+- **Контракт НЕ менялся** — эндпоинты `/pages/{slug}/incidents`, `/incidents/{id}`, `/maintenances`
+  (фильтры, пагинация, IncidentList/MaintenanceList, Pagination) уже были в openapi. Регенерация типов
+  не нужна.
+- **sqlc** (incidents.sql/maintenances.sql): `ListPublicIncidents`+`CountPublicIncidents` (фильтры
+  status/impact/component_id через `sqlc.narg(...)::type IS NULL OR ...`, пагинация LIMIT/OFFSET; nullable
+  uuid → `*uuid.UUID`, nullable enum → `db.Null*`), `ListActivePublicIncidents` (не resolved, видимые),
+  `ListPublicMaintenances`+`Count*` (фильтр status), `ListActivePublicMaintenances` (не completed).
+- **store:** `IncidentFilter{Status,Impact,ComponentID}`; `ListPublicIncidents(pageID,filter,limit,offset)
+  → ([]Incident, total, err)`, `ListActiveIncidents`; `ListPublicMaintenances(pageID,*status,limit,offset)`,
+  `ListActiveMaintenances`. Гидрация агрегата вынесена в `hydrateIncident`/`hydrateMaintenance`
+  (IncidentByID/MaintenanceByID теперь зовут их). ⚠️ N+1 на гидрации списков (компоненты+лента на каждую
+  запись) — допустимо для MVP-объёмов (per_page≤100), как и в ListIncidentTemplates; при росте — батч-запрос
+  `WHERE id = ANY(...)`.
+- **API** (`public_history.go`, без авторизации): `handlePublicIncidents` (валидирует enum-фильтры → 422,
+  пагинация), `handlePublicIncidentDetail` (скрытый/удалённый/с чужой страницы/битый uuid → 404),
+  `handlePublicMaintenances`. Хелпер `parsePagination` (page≥1 деф.1; per_page 1..100 деф.20) +
+  `atoiDefault`. DTO списков `incidentListResponse`/`maintenanceListResponse` ({items, pagination}).
+  Переиспользуют `toIncidentResponse`/`toMaintenanceResponse` из 2.5/2.6.
+- **Публичная сводка** (`public.go`): `active_incidents`/`active_maintenances` больше НЕ `[]` — наполнены
+  через `ListActiveIncidents`/`ListActiveMaintenances`; поля стали типизированными
+  (`[]incidentResponse`/`[]maintenanceResponse`). **Решение (агентское, не контракт):** active_maintenances
+  = scheduled + in_progress (не completed) — на странице показываются и идущие, и предстоящие работы.
+- **Роуты** в server.go рядом с summary/components (публичная группа). **Интеграционный тест**
+  `public_history_integration_test.go`: история (скрытый исключён) → фильтры impact/status/component_id →
+  пагинация → 422 → detail (видимый ок, скрытый/битый 404) → работы (список+фильтр) → сводка
+  (active_incidents=1, active_maintenances=2). **PASS на PG16.** Build/test/vet/gofmt/lint зелёные.
 
 **Этап 2.7 — шаблоны инцидентов (написано и проверено на живом PG, ждёт коммита):**
 - **Решения человека (контракт):** (1) роуты **плоские** + `status_page_id` (как 2.5/2.6), не вложенные
@@ -565,3 +591,9 @@ _Этап 0 — завершён и закоммичен._
   Миграция 00007 (БД→7, hard-delete), домен+Validate (+ErrInvalidIncidentImpact), sqlc/store/API,
   переиспользование IncidentComponent и parseIncidentComponents. Юнит + интеграционный тест на PG16
   PASS. Дальше — 2.8 (публичная история + наполнение active_incidents/active_maintenances).
+- 2026-06-29 — Этап 2.8 (публичная история + сводка): контракт не менялся; sqlc-запросы публичных
+  списков (фильтры через narg, пагинация) + активных для сводки; store ListPublic*/ListActive*
+  (+ гидрация вынесена в hydrateIncident/hydrateMaintenance); API public_history.go (история инцидентов
+  с фильтрами status/impact/component_id + пагинация, detail со скрытием невидимых→404, список работ);
+  публичная сводка наполнена active_incidents (не resolved)/active_maintenances (не completed).
+  Интеграционный тест на PG16 PASS. Дальше — 2.9 (админка инцидентов/работ/шаблонов + «применить шаблон»).

@@ -64,9 +64,12 @@ func (s *Store) MaintenanceByID(ctx context.Context, id uuid.UUID) (domain.Maint
 	if err != nil {
 		return domain.Maintenance{}, wrapNotFound(err)
 	}
-	m := mapMaintenance(row)
+	return s.hydrateMaintenance(ctx, mapMaintenance(row))
+}
 
-	comps, err := s.q.ListMaintenanceComponents(ctx, id)
+// hydrateMaintenance догружает в работы их компоненты и ленту обновлений (по m.ID).
+func (s *Store) hydrateMaintenance(ctx context.Context, m domain.Maintenance) (domain.Maintenance, error) {
+	comps, err := s.q.ListMaintenanceComponents(ctx, m.ID)
 	if err != nil {
 		return domain.Maintenance{}, fmt.Errorf("store: list maintenance components: %w", err)
 	}
@@ -75,7 +78,7 @@ func (s *Store) MaintenanceByID(ctx context.Context, id uuid.UUID) (domain.Maint
 		m.ComponentIDs[i] = c.ComponentID
 	}
 
-	updates, err := s.q.ListMaintenanceUpdates(ctx, id)
+	updates, err := s.q.ListMaintenanceUpdates(ctx, m.ID)
 	if err != nil {
 		return domain.Maintenance{}, fmt.Errorf("store: list maintenance updates: %w", err)
 	}
@@ -84,6 +87,63 @@ func (s *Store) MaintenanceByID(ctx context.Context, id uuid.UUID) (domain.Maint
 		m.Updates[i] = mapMaintenanceUpdate(u)
 	}
 	return m, nil
+}
+
+// ListPublicMaintenances возвращает страницу публичного списка работ (не удалённых) с
+// опциональным фильтром по статусу и пагинацией, плюс общее число подходящих записей.
+// limit/offset нормализованы вызывающим. Каждая запись — полный агрегат.
+func (s *Store) ListPublicMaintenances(
+	ctx context.Context, pageID uuid.UUID, statusFilter *domain.MaintenanceStatus, limit, offset int,
+) ([]domain.Maintenance, int, error) {
+	var status db.NullMaintenanceStatus
+	if statusFilter != nil {
+		status = db.NullMaintenanceStatus{MaintenanceStatus: db.MaintenanceStatus(*statusFilter), Valid: true}
+	}
+
+	rows, err := s.q.ListPublicMaintenances(ctx, db.ListPublicMaintenancesParams{
+		StatusPageID: pageID,
+		Status:       status,
+		Lim:          int32(limit),
+		Off:          int32(offset),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list public maintenances: %w", err)
+	}
+	total, err := s.q.CountPublicMaintenances(ctx, db.CountPublicMaintenancesParams{
+		StatusPageID: pageID,
+		Status:       status,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: count public maintenances: %w", err)
+	}
+
+	out := make([]domain.Maintenance, len(rows))
+	for i, row := range rows {
+		hydrated, err := s.hydrateMaintenance(ctx, mapMaintenance(row))
+		if err != nil {
+			return nil, 0, err
+		}
+		out[i] = hydrated
+	}
+	return out, int(total), nil
+}
+
+// ListActiveMaintenances возвращает активные (не завершённые: scheduled + in_progress) работы
+// страницы для публичной сводки — полными агрегатами.
+func (s *Store) ListActiveMaintenances(ctx context.Context, pageID uuid.UUID) ([]domain.Maintenance, error) {
+	rows, err := s.q.ListActivePublicMaintenances(ctx, pageID)
+	if err != nil {
+		return nil, fmt.Errorf("store: list active maintenances: %w", err)
+	}
+	out := make([]domain.Maintenance, len(rows))
+	for i, row := range rows {
+		hydrated, err := s.hydrateMaintenance(ctx, mapMaintenance(row))
+		if err != nil {
+			return nil, err
+		}
+		out[i] = hydrated
+	}
+	return out, nil
 }
 
 // UpdateMaintenance сохраняет изменённые поля работ (вызывающий уже применил domain-логику в `m`,

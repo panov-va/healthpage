@@ -54,6 +54,14 @@ func toMaintenanceResponse(m domain.Maintenance) maintenanceResponse {
 	}
 }
 
+func toMaintenanceResponses(ms []domain.Maintenance) []maintenanceResponse {
+	out := make([]maintenanceResponse, len(ms))
+	for i, m := range ms {
+		out[i] = toMaintenanceResponse(m)
+	}
+	return out
+}
+
 func toMaintenanceUpdateResponse(u domain.MaintenanceUpdate) maintenanceUpdateResponse {
 	return maintenanceUpdateResponse{
 		ID: u.ID.String(), Body: u.Body, NotifySubscribers: u.NotifySubscribers,

@@ -47,6 +47,39 @@ WHERE i.status_page_id = $1
   AND i.deleted_at IS NULL
   AND i.current_status <> 'resolved';
 
+-- Публичная история инцидентов страницы: только видимые и не удалённые, с опциональными
+-- фильтрами (статус, impact, затронутый компонент) и пагинацией (DESIGN §3.3).
+-- name: ListPublicIncidents :many
+SELECT * FROM incidents
+WHERE status_page_id = @status_page_id
+  AND deleted_at IS NULL
+  AND is_visible = true
+  AND (sqlc.narg('status')::incident_status IS NULL OR current_status = sqlc.narg('status'))
+  AND (sqlc.narg('impact')::incident_impact IS NULL OR impact = sqlc.narg('impact'))
+  AND (sqlc.narg('component_id')::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = sqlc.narg('component_id')))
+ORDER BY started_at DESC
+LIMIT @lim OFFSET @off;
+
+-- name: CountPublicIncidents :one
+SELECT count(*) FROM incidents
+WHERE status_page_id = @status_page_id
+  AND deleted_at IS NULL
+  AND is_visible = true
+  AND (sqlc.narg('status')::incident_status IS NULL OR current_status = sqlc.narg('status'))
+  AND (sqlc.narg('impact')::incident_impact IS NULL OR impact = sqlc.narg('impact'))
+  AND (sqlc.narg('component_id')::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = sqlc.narg('component_id')));
+
+-- Активные (не resolved, видимые) инциденты страницы — для публичной сводки.
+-- name: ListActivePublicIncidents :many
+SELECT * FROM incidents
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND is_visible = true
+  AND current_status <> 'resolved'
+ORDER BY started_at DESC;
+
 -- ── incident_updates ──
 
 -- name: AddIncidentUpdate :one

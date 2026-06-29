@@ -146,8 +146,19 @@
       `parseIncidentComponents`). Юнит-тест домена + интеграционный на реальном PG16 (создание не меняет
       статус компонента → список/get → patch impact+замена компонентов → 422 → изоляция → delete/повторный
       404 → 401). Build/test/vet/gofmt/lint + admin build зелёные. Ждёт коммита человеком.
-- [ ] **2.8** Публичные: история инцидентов с фильтрами (компонент, impact) + пагинация;
+- [x] **2.8** Публичные: история инцидентов с фильтрами (компонент, impact) + пагинация;
       детальная страница инцидента; список работ.
+      — ✅ Контракт уже описывал эндпоинты — НЕ менялся. sqlc: `ListPublicIncidents`/`Count*`
+      (фильтры status/impact/component_id через sqlc.narg, пагинация), `ListActivePublicIncidents`,
+      `ListPublicMaintenances`/`Count*` (фильтр status), `ListActivePublicMaintenances`. store:
+      `ListPublicIncidents`/`ListActiveIncidents`, `ListPublicMaintenances`/`ListActiveMaintenances`
+      (гидрация агрегатов вынесена в `hydrateIncident`/`hydrateMaintenance`). API (`public_history.go`,
+      без авторизации): `GET /pages/{slug}/incidents` (фильтры+пагинация, IncidentList), `/incidents/{id}`
+      (detail; скрытые/удалённые/чужие → 404), `/maintenances` (фильтр+пагинация, MaintenanceList);
+      хелпер `parsePagination` (page≥1, per_page 1..100). **Публичная сводка наполнена**: `active_incidents`
+      (не resolved, видимые), `active_maintenances` (не completed: scheduled+in_progress). Невалидный
+      фильтр → 422. Интеграционный тест на PG16 (фильтры/пагинация/скрытые/detail/работы/сводка) PASS.
+      Build/test/vet/gofmt/lint зелёные. Ждёт коммита человеком.
 - [ ] **2.9** Админка: создание/ведение инцидентов (лента обновлений) и работ; UI фильтров.
 - [ ] **2.10** Публичный SSR: вкладки «Инциденты» и «Плановые работы», детальные страницы.
 

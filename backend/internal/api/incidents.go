@@ -60,6 +60,14 @@ func toIncidentResponse(inc domain.Incident) incidentResponse {
 	}
 }
 
+func toIncidentResponses(incs []domain.Incident) []incidentResponse {
+	out := make([]incidentResponse, len(incs))
+	for i, inc := range incs {
+		out[i] = toIncidentResponse(inc)
+	}
+	return out
+}
+
 func toIncidentUpdateResponse(u domain.IncidentUpdate) incidentUpdateResponse {
 	return incidentUpdateResponse{
 		ID: u.ID.String(), Status: string(u.Status), Body: u.Body,

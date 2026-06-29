@@ -48,6 +48,30 @@ WHERE m.status_page_id = $1
   AND m.deleted_at IS NULL
   AND m.status = 'in_progress';
 
+-- Публичный список работ страницы: не удалённые, с опциональным фильтром по статусу и пагинацией.
+-- name: ListPublicMaintenances :many
+SELECT * FROM maintenances
+WHERE status_page_id = @status_page_id
+  AND deleted_at IS NULL
+  AND (sqlc.narg('status')::maintenance_status IS NULL OR status = sqlc.narg('status'))
+ORDER BY scheduled_start DESC
+LIMIT @lim OFFSET @off;
+
+-- name: CountPublicMaintenances :one
+SELECT count(*) FROM maintenances
+WHERE status_page_id = @status_page_id
+  AND deleted_at IS NULL
+  AND (sqlc.narg('status')::maintenance_status IS NULL OR status = sqlc.narg('status'));
+
+-- Активные (не завершённые: scheduled + in_progress) работы страницы — для публичной сводки;
+-- ближайшие/идущие первыми.
+-- name: ListActivePublicMaintenances :many
+SELECT * FROM maintenances
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND status <> 'completed'
+ORDER BY scheduled_start;
+
 -- ── maintenance_updates ──
 
 -- name: AddMaintenanceUpdate :one

@@ -66,6 +66,25 @@ func (q *Queries) AddMaintenanceUpdate(ctx context.Context, arg AddMaintenanceUp
 	return i, err
 }
 
+const countPublicMaintenances = `-- name: CountPublicMaintenances :one
+SELECT count(*) FROM maintenances
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND ($2::maintenance_status IS NULL OR status = $2)
+`
+
+type CountPublicMaintenancesParams struct {
+	StatusPageID uuid.UUID
+	Status       NullMaintenanceStatus
+}
+
+func (q *Queries) CountPublicMaintenances(ctx context.Context, arg CountPublicMaintenancesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPublicMaintenances, arg.StatusPageID, arg.Status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createMaintenance = `-- name: CreateMaintenance :one
 
 INSERT INTO maintenances (
@@ -180,6 +199,49 @@ func (q *Queries) ListActiveMaintenanceComponentIDs(ctx context.Context, statusP
 	return items, nil
 }
 
+const listActivePublicMaintenances = `-- name: ListActivePublicMaintenances :many
+SELECT id, status_page_id, title, description, status, scheduled_start, scheduled_end, started_at, completed_at, created_at, updated_at, deleted_at FROM maintenances
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND status <> 'completed'
+ORDER BY scheduled_start
+`
+
+// Активные (не завершённые: scheduled + in_progress) работы страницы — для публичной сводки;
+// ближайшие/идущие первыми.
+func (q *Queries) ListActivePublicMaintenances(ctx context.Context, statusPageID uuid.UUID) ([]Maintenance, error) {
+	rows, err := q.db.Query(ctx, listActivePublicMaintenances, statusPageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Maintenance{}
+	for rows.Next() {
+		var i Maintenance
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatusPageID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.ScheduledStart,
+			&i.ScheduledEnd,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMaintenanceComponents = `-- name: ListMaintenanceComponents :many
 SELECT id, maintenance_id, component_id, created_at, updated_at FROM maintenance_components WHERE maintenance_id = $1 ORDER BY created_at
 `
@@ -230,6 +292,61 @@ func (q *Queries) ListMaintenanceUpdates(ctx context.Context, maintenanceID uuid
 			&i.NotifySubscribers,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPublicMaintenances = `-- name: ListPublicMaintenances :many
+SELECT id, status_page_id, title, description, status, scheduled_start, scheduled_end, started_at, completed_at, created_at, updated_at, deleted_at FROM maintenances
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND ($2::maintenance_status IS NULL OR status = $2)
+ORDER BY scheduled_start DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListPublicMaintenancesParams struct {
+	StatusPageID uuid.UUID
+	Status       NullMaintenanceStatus
+	Off          int32
+	Lim          int32
+}
+
+// Публичный список работ страницы: не удалённые, с опциональным фильтром по статусу и пагинацией.
+func (q *Queries) ListPublicMaintenances(ctx context.Context, arg ListPublicMaintenancesParams) ([]Maintenance, error) {
+	rows, err := q.db.Query(ctx, listPublicMaintenances,
+		arg.StatusPageID,
+		arg.Status,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Maintenance{}
+	for rows.Next() {
+		var i Maintenance
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatusPageID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.ScheduledStart,
+			&i.ScheduledEnd,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}

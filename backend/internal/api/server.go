@@ -55,6 +55,9 @@ func NewRouter(d Deps) http.Handler {
 		// (единое имя для chi); здесь трактуется как slug.
 		r.Get("/pages/{page}/summary", s.handlePublicSummary)
 		r.Get("/pages/{page}/components", s.handlePublicComponents)
+		r.Get("/pages/{page}/incidents", s.handlePublicIncidents)
+		r.Get("/pages/{page}/incidents/{id}", s.handlePublicIncidentDetail)
+		r.Get("/pages/{page}/maintenances", s.handlePublicMaintenances)
 
 		// Управляющие эндпоинты — только по операторскому JWT (ApiToken — этап 5).
 		// {page} здесь трактуется как uuid.

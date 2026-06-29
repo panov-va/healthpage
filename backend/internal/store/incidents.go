@@ -259,13 +259,10 @@ func (s *Store) SoftDeleteIncident(ctx context.Context, id uuid.UUID) error {
 }
 
 // recomputeComponentStatusesTx пересчитывает current_status каждого из componentIDs по
-// авто-деривации (DESIGN §3.3, §6): худший статус среди активных инцидентов страницы; если ни
-// один активный инцидент компонент не затрагивает — компонент возвращается в operational.
-// Изменение пишется в историю с source=incident; компоненты без изменения не трогаются.
-//
-// TODO (этап 2.6): помимо активных инцидентов передавать в domain.DerivedComponentStatus и
-// активные (in_progress) работы, иначе авто-перевод в under_maintenance здесь не учитывается.
-// Сейчас активных работ существовать не может (API работ ещё нет), поэтому безопасно.
+// авто-деривации (DESIGN §3.3, §3.4, §6): худший статус среди активных инцидентов и активных
+// (in_progress) работ страницы; если ни инцидент, ни работа компонент не затрагивают — компонент
+// возвращается в operational. Изменение пишется в историю с source=incident/maintenance
+// (по природе навязанного статуса); компоненты без изменения не трогаются.
 func recomputeComponentStatusesTx(
 	ctx context.Context, q *db.Queries, pageID uuid.UUID, componentIDs []uuid.UUID,
 ) error {
@@ -279,13 +276,21 @@ func recomputeComponentStatusesTx(
 	}
 	// Все строки — из активных инцидентов, поэтому собираем их в один «активный» агрегат:
 	// domain.DerivedComponentStatus отфильтрует по нужному компоненту.
-	active := domain.Incident{CurrentStatus: domain.IncidentInvestigating}
+	activeInc := domain.Incident{CurrentStatus: domain.IncidentInvestigating}
 	for _, r := range rows {
-		active.Components = append(active.Components, domain.IncidentComponent{
+		activeInc.Components = append(activeInc.Components, domain.IncidentComponent{
 			ComponentID:               r.ComponentID,
 			ComponentStatusInIncident: domain.ComponentStatus(r.ComponentStatusInIncident),
 		})
 	}
+
+	mcIDs, err := q.ListActiveMaintenanceComponentIDs(ctx, pageID)
+	if err != nil {
+		return fmt.Errorf("store: list active maintenance components: %w", err)
+	}
+	// Все строки — из активных (in_progress) работ; один «активный» агрегат навязывает
+	// under_maintenance своим компонентам (Maintenance.ImposedComponentStatus).
+	activeM := domain.Maintenance{Status: domain.MaintenanceInProgress, ComponentIDs: mcIDs}
 
 	for _, cid := range componentIDs {
 		comp, err := q.GetComponentByID(ctx, cid)
@@ -295,11 +300,19 @@ func recomputeComponentStatusesTx(
 			}
 			return fmt.Errorf("store: load component for recompute: %w", err)
 		}
-		derived, _ := domain.DerivedComponentStatus(cid, []domain.Incident{active}, nil)
+		derived, _ := domain.DerivedComponentStatus(
+			cid, []domain.Incident{activeInc}, []domain.Maintenance{activeM},
+		)
 		if domain.ComponentStatus(comp.CurrentStatus) == derived {
 			continue
 		}
-		if _, err := changeComponentStatusTx(ctx, q, cid, derived, domain.SourceIncident); err != nil {
+		// Источник истории отражает природу навязанного статуса: under_maintenance — от работ,
+		// прочее (включая возврат в operational) — от инцидентов.
+		source := domain.SourceIncident
+		if derived == domain.StatusUnderMaintenance {
+			source = domain.SourceMaintenance
+		}
+		if _, err := changeComponentStatusTx(ctx, q, cid, derived, source); err != nil {
 			return err
 		}
 	}

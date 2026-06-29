@@ -553,6 +553,88 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  # ──────────────────────── INCIDENT TEMPLATES ───────────────────────────
+  /incident-templates:
+    get:
+      tags: [Incidents]
+      summary: Список шаблонов инцидентов
+      parameters:
+        - name: status_page_id
+          in: query
+          required: false
+          description: >
+            Страница, чьи шаблоны вернуть. Обязателен при операторском JWT; при ApiToken
+            выводится из токена.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IncidentTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Incidents]
+      summary: Создать шаблон инцидента
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncidentTemplateCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /incident-templates/{id}:
+    get:
+      tags: [Incidents]
+      summary: Получить шаблон инцидента
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Incidents]
+      summary: Изменить шаблон инцидента
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncidentTemplatePatch' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Incidents]
+      summary: Удалить шаблон инцидента
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ───────────────────────────── MAINTENANCES ────────────────────────────
   /maintenances:
     post:
@@ -1355,6 +1437,46 @@ components:
           items: { $ref: '#/components/schemas/Incident' }
         pagination: { $ref: '#/components/schemas/Pagination' }
 
+    # ── шаблоны инцидентов ──
+    IncidentTemplate:
+      type: object
+      required: [id, status_page_id, name, default_impact]
+      properties:
+        id: { type: string, format: uuid }
+        status_page_id: { type: string, format: uuid }
+        name: { type: string, description: "Внутреннее имя шаблона (для оператора)" }
+        title_tmpl: { type: string, description: "Заготовка заголовка инцидента" }
+        body_tmpl: { type: string, description: "Заготовка текста первого обновления" }
+        default_impact: { $ref: '#/components/schemas/IncidentImpact' }
+        default_components:
+          type: array
+          description: "Преднастроенные затронутые компоненты и их статус в инциденте"
+          items: { $ref: '#/components/schemas/IncidentComponent' }
+
+    IncidentTemplateCreate:
+      type: object
+      required: [status_page_id, name]
+      properties:
+        status_page_id: { type: string, format: uuid, description: "Страница, к которой относится шаблон" }
+        name: { type: string }
+        title_tmpl: { type: string }
+        body_tmpl: { type: string }
+        default_impact: { $ref: '#/components/schemas/IncidentImpact' }
+        default_components:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentComponent' }
+
+    IncidentTemplatePatch:
+      type: object
+      properties:
+        name: { type: string }
+        title_tmpl: { type: string }
+        body_tmpl: { type: string }
+        default_impact: { $ref: '#/components/schemas/IncidentImpact' }
+        default_components:
+          type: array
+          items: { $ref: '#/components/schemas/IncidentComponent' }
+
     # ── плановые работы ──
     MaintenanceUpdate:
       type: object
@@ -1386,8 +1508,9 @@ components:
 
     MaintenanceCreate:
       type: object
-      required: [title, scheduled_start, scheduled_end]
+      required: [status_page_id, title, scheduled_start, scheduled_end]
       properties:
+        status_page_id: { type: string, format: uuid, description: "Страница, к которой относятся работы" }
         title: { type: string }
         description: { type: string }
         scheduled_start: { type: string, format: date-time }

@@ -81,6 +81,17 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/incidents/{id}", s.handlePatchIncident)
 			r.Delete("/incidents/{id}", s.handleDeleteIncident)
 			r.Post("/incidents/{id}/updates", s.handleAddIncidentUpdate)
+
+			r.Get("/incident-templates", s.handleListIncidentTemplates)
+			r.Post("/incident-templates", s.handleCreateIncidentTemplate)
+			r.Get("/incident-templates/{id}", s.handleGetIncidentTemplate)
+			r.Patch("/incident-templates/{id}", s.handlePatchIncidentTemplate)
+			r.Delete("/incident-templates/{id}", s.handleDeleteIncidentTemplate)
+
+			r.Post("/maintenances", s.handleCreateMaintenance)
+			r.Patch("/maintenances/{id}", s.handlePatchMaintenance)
+			r.Delete("/maintenances/{id}", s.handleDeleteMaintenance)
+			r.Post("/maintenances/{id}/updates", s.handleAddMaintenanceUpdate)
 		})
 	})
 

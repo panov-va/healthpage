@@ -369,6 +369,45 @@ type IncidentPatch struct {
 // IncidentStatus defines model for IncidentStatus.
 type IncidentStatus string
 
+// IncidentTemplate defines model for IncidentTemplate.
+type IncidentTemplate struct {
+	// BodyTmpl Заготовка текста первого обновления
+	BodyTmpl *string `json:"body_tmpl,omitempty"`
+
+	// DefaultComponents Преднастроенные затронутые компоненты и их статус в инциденте
+	DefaultComponents *[]IncidentComponent `json:"default_components,omitempty"`
+	DefaultImpact     IncidentImpact       `json:"default_impact"`
+	Id                openapi_types.UUID   `json:"id"`
+
+	// Name Внутреннее имя шаблона (для оператора)
+	Name         string             `json:"name"`
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
+
+	// TitleTmpl Заготовка заголовка инцидента
+	TitleTmpl *string `json:"title_tmpl,omitempty"`
+}
+
+// IncidentTemplateCreate defines model for IncidentTemplateCreate.
+type IncidentTemplateCreate struct {
+	BodyTmpl          *string              `json:"body_tmpl,omitempty"`
+	DefaultComponents *[]IncidentComponent `json:"default_components,omitempty"`
+	DefaultImpact     *IncidentImpact      `json:"default_impact,omitempty"`
+	Name              string               `json:"name"`
+
+	// StatusPageId Страница, к которой относится шаблон
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
+	TitleTmpl    *string            `json:"title_tmpl,omitempty"`
+}
+
+// IncidentTemplatePatch defines model for IncidentTemplatePatch.
+type IncidentTemplatePatch struct {
+	BodyTmpl          *string              `json:"body_tmpl,omitempty"`
+	DefaultComponents *[]IncidentComponent `json:"default_components,omitempty"`
+	DefaultImpact     *IncidentImpact      `json:"default_impact,omitempty"`
+	Name              *string              `json:"name,omitempty"`
+	TitleTmpl         *string              `json:"title_tmpl,omitempty"`
+}
+
 // IncidentUpdate defines model for IncidentUpdate.
 type IncidentUpdate struct {
 	// Body Текст обновления (Markdown)
@@ -413,7 +452,10 @@ type MaintenanceCreate struct {
 	Notify         *bool                 `json:"notify,omitempty"`
 	ScheduledEnd   time.Time             `json:"scheduled_end"`
 	ScheduledStart time.Time             `json:"scheduled_start"`
-	Title          string                `json:"title"`
+
+	// StatusPageId Страница, к которой относятся работы
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
+	Title        string             `json:"title"`
 }
 
 // MaintenanceList defines model for MaintenanceList.
@@ -676,6 +718,12 @@ type GetComponentsParams struct {
 	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
 }
 
+// GetIncidentTemplatesParams defines parameters for GetIncidentTemplates.
+type GetIncidentTemplatesParams struct {
+	// StatusPageId Страница, чьи шаблоны вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена.
+	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
+}
+
 // PostIntegrationsIntegrationIdGenericJSONBody defines parameters for PostIntegrationsIntegrationIdGeneric.
 type PostIntegrationsIntegrationIdGenericJSONBody map[string]interface{}
 
@@ -761,6 +809,12 @@ type PatchComponentsIdJSONRequestBody = ComponentUpdate
 
 // PostImportJSONRequestBody defines body for PostImport for application/json ContentType.
 type PostImportJSONRequestBody = ImportRequest
+
+// PostIncidentTemplatesJSONRequestBody defines body for PostIncidentTemplates for application/json ContentType.
+type PostIncidentTemplatesJSONRequestBody = IncidentTemplateCreate
+
+// PatchIncidentTemplatesIdJSONRequestBody defines body for PatchIncidentTemplatesId for application/json ContentType.
+type PatchIncidentTemplatesIdJSONRequestBody = IncidentTemplatePatch
 
 // PostIncidentsJSONRequestBody defines body for PostIncidents for application/json ContentType.
 type PostIncidentsJSONRequestBody = IncidentCreate

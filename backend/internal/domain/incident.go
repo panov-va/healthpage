@@ -158,6 +158,8 @@ func (i Incident) IsActive() bool { return !i.IsResolved() }
 var (
 	// ErrInvalidIncidentStatus — попытка перевести инцидент в значение вне нормативного enum.
 	ErrInvalidIncidentStatus = errors.New("invalid incident status")
+	// ErrInvalidIncidentImpact — impact вне нормативного enum.
+	ErrInvalidIncidentImpact = errors.New("invalid incident impact")
 	// ErrPostmortemBeforeResolved — постмортем можно прикрепить только к устранённому инциденту
 	// (DESIGN §3.3: «после resolved можно прикрепить пост-мортем»).
 	ErrPostmortemBeforeResolved = errors.New("postmortem allowed only after incident is resolved")

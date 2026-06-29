@@ -120,8 +120,32 @@
       добавлен `status_page_id` в `IncidentCreate` (решение человека, как в 1.5), типы перегенерированы.
       Интеграционный тест на реальном PG16 (создание→деривация→обновления→resolve→возврат компонента→
       постмортем→изоляция→401). Ждёт коммита человеком.
-- [ ] **2.6** API работ: create / patch (смена статуса) / delete / updates.
-- [ ] **2.7** Шаблоны инцидентов (`IncidentTemplate`).
+- [x] **2.6** API работ: create / patch (смена статуса) / delete / updates.
+      — ✅ sqlc-запросы maintenances/maintenance_components/maintenance_updates → store
+      (`maintenances.go`): CreateMaintenance, MaintenanceByID (агрегат), UpdateMaintenance (replace
+      components + смена статуса с авто under_maintenance), AddMaintenanceUpdate (заметка без статуса),
+      SoftDeleteMaintenance; всё транзакционно. **recompute расширен**: общий `recomputeComponentStatusesTx`
+      теперь читает и активные инциденты, и активные (in_progress) работы (`ListActiveMaintenanceComponentIDs`),
+      пишет историю с source=maintenance для under_maintenance. API (`api/maintenances.go`): POST
+      `/maintenances`, PATCH/DELETE `/maintenances/{id}`, POST `/maintenances/{id}/updates` под
+      requireAuth, авторизация по владению, валидация окна (ValidateSchedule) и принадлежности
+      компонентов. **Контракт:** добавлен `status_page_id` в `MaintenanceCreate` (решение человека,
+      как в 2.5), типы перегенерированы. Интеграционный тест на реальном PG16 (scheduled→in_progress→
+      under_maintenance→completed→operational→delete-возврат→изоляция→401). Ждёт коммита человеком.
+- [x] **2.7** Шаблоны инцидентов (`IncidentTemplate`).
+      — ✅ **Контракт расширен** (решения человека: плоские роуты + `status_page_id`;
+      `default_components` как пары `{component_id, status}`; **только CRUD**, apply — на клиенте/этап 5):
+      схемы `IncidentTemplate`/`Create`/`Patch`, эндпоинты GET(list)/POST `/incident-templates`,
+      GET/PATCH/DELETE `/incident-templates/{id}` (тег Incidents). Типы перегенерированы (TS+Go).
+      Миграция `00007_incident_templates.sql` (БД→7): `incident_templates` + `incident_template_components`
+      (hard-delete — операторская конфигурация без истории, как в модели DESIGN §5; FK CASCADE; unique
+      компонент-в-шаблоне; триггеры updated_at). Домен `incident_template.go` (+`Validate`: имя+impact;
+      переиспользует `IncidentComponent`). Store `incident_templates.go` (Create/ByID/List/Update/Delete,
+      транзакции, без рекомпьюта — шаблон не влияет на статус). API `incident_templates.go` под requireAuth,
+      авторизация по владению, валидация impact/имени/принадлежности компонентов (переиспользует
+      `parseIncidentComponents`). Юнит-тест домена + интеграционный на реальном PG16 (создание не меняет
+      статус компонента → список/get → patch impact+замена компонентов → 422 → изоляция → delete/повторный
+      404 → 401). Build/test/vet/gofmt/lint + admin build зелёные. Ждёт коммита человеком.
 - [ ] **2.8** Публичные: история инцидентов с фильтрами (компонент, impact) + пагинация;
       детальная страница инцидента; список работ.
 - [ ] **2.9** Админка: создание/ведение инцидентов (лента обновлений) и работ; UI фильтров.

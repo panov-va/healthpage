@@ -1130,6 +1130,163 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/incident-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Список шаблонов инцидентов */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Страница, чьи шаблоны вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. */
+                    status_page_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IncidentTemplate"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        /** Создать шаблон инцидента */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["IncidentTemplateCreate"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IncidentTemplate"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/incident-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить шаблон инцидента */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IncidentTemplate"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Удалить шаблон инцидента */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Изменить шаблон инцидента */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["IncidentTemplatePatch"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IncidentTemplate"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        trace?: never;
+    };
     "/maintenances": {
         parameters: {
             query?: never;
@@ -2387,6 +2544,40 @@ export interface components {
             items?: components["schemas"]["Incident"][];
             pagination?: components["schemas"]["Pagination"];
         };
+        IncidentTemplate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            status_page_id: string;
+            /** @description Внутреннее имя шаблона (для оператора) */
+            name: string;
+            /** @description Заготовка заголовка инцидента */
+            title_tmpl?: string;
+            /** @description Заготовка текста первого обновления */
+            body_tmpl?: string;
+            default_impact: components["schemas"]["IncidentImpact"];
+            /** @description Преднастроенные затронутые компоненты и их статус в инциденте */
+            default_components?: components["schemas"]["IncidentComponent"][];
+        };
+        IncidentTemplateCreate: {
+            /**
+             * Format: uuid
+             * @description Страница, к которой относится шаблон
+             */
+            status_page_id: string;
+            name: string;
+            title_tmpl?: string;
+            body_tmpl?: string;
+            default_impact?: components["schemas"]["IncidentImpact"];
+            default_components?: components["schemas"]["IncidentComponent"][];
+        };
+        IncidentTemplatePatch: {
+            name?: string;
+            title_tmpl?: string;
+            body_tmpl?: string;
+            default_impact?: components["schemas"]["IncidentImpact"];
+            default_components?: components["schemas"]["IncidentComponent"][];
+        };
         MaintenanceUpdate: {
             /** Format: uuid */
             id: string;
@@ -2413,6 +2604,11 @@ export interface components {
             updates?: components["schemas"]["MaintenanceUpdate"][];
         };
         MaintenanceCreate: {
+            /**
+             * Format: uuid
+             * @description Страница, к которой относятся работы
+             */
+            status_page_id: string;
             title: string;
             description?: string;
             /** Format: date-time */

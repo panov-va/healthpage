@@ -13,15 +13,13 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1–2.5** написаны и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 2.6 — store + API плановых работ (create/patch[смена статуса]/delete/updates)
-по openapi. Структурно зеркалит 2.5: queries maintenances/maintenance_components/maintenance_updates,
-store с авто-переводом компонентов в under_maintenance (при in_progress) и обратно, API под requireAuth.
-**ВАЖНО для 2.6:** (1) добавить `status_page_id` в `MaintenanceCreate` (решение человека уже получено,
-как в 2.5) + перегенерировать типы; (2) **расширить `recomputeComponentStatusesTx`** (store/incidents.go) —
-сейчас передаёт в `DerivedComponentStatus` только активные инциденты и `nil` работ; 2.6 должен грузить
-активные (in_progress) работы страницы и передавать их, иначе авто-under_maintenance не сработает
-(см. TODO в коде recompute). Лучше вынести recompute в общий store-хелпер, читающий и инциденты, и работы.
+Задачи 1.1–1.10 + фикс main.go + **2.1–2.7** написаны и проверены, ждут коммита человеком.
+**Следующий шаг:** Этап 2.8 — публичные: история инцидентов с фильтрами (компонент, impact) +
+пагинация; детальная страница инцидента; список работ. ВАЖНО: `active_incidents`/`active_maintenances`
+в публичной сводке (`api/public.go`) всё ещё `[]` — 2.8 их наполняет (+ публичные read-only
+эндпоинты истории/списков по openapi; сверься со схемами IncidentList/MaintenanceList и path'ами
+`/pages/{slug}/incidents`, `/pages/{slug}/maintenances`). Затем 2.9 (админка инцидентов/работ/
+шаблонов; здесь же UI «применить шаблон» — префилл формы инцидента) и 2.10 (публичный SSR).
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -92,6 +90,65 @@ store с авто-переводом компонентов в under_maintenance
 
 ## Что в работе
 
+**Этап 2.7 — шаблоны инцидентов (написано и проверено на живом PG, ждёт коммита):**
+- **Решения человека (контракт):** (1) роуты **плоские** + `status_page_id` (как 2.5/2.6), не вложенные
+  в /pages; (2) `default_components` — **пары `{component_id, component_status_in_incident}`** (переиспользуем
+  схему `IncidentComponent`); (3) объём — **только CRUD**, применение шаблона (префилл формы → POST
+  /incidents) на клиенте (админка 2.9); серверный apply-эндпоинт — возможно на этапе 5 при спросе.
+- **Контракт расширен:** схемы `IncidentTemplate`/`IncidentTemplateCreate`/`IncidentTemplatePatch`,
+  пути GET(list)/POST `/incident-templates`, GET/PATCH/DELETE `/incident-templates/{id}` (тег Incidents,
+  под global security). Типы перегенерированы (TS+Go). openapi провалиден (gen прошёл).
+- **Миграция** `00007_incident_templates.sql` (БД→**7**): `incident_templates` (name, title_tmpl,
+  body_tmpl, default_impact `incident_impact` DEFAULT none) + `incident_template_components`
+  (зеркало incident_components). **Hard-delete** (без deleted_at) — шаблон это операторская
+  конфигурация без публичной истории (в модели DESIGN §5 у IncidentTemplate нет deleted_at). FK
+  CASCADE на страницу/компонент, unique компонент-в-шаблоне, триггеры updated_at. Проверено up/status/
+  down/up на PG16.
+- **Домен** `internal/domain/incident_template.go`: сущность `IncidentTemplate` (+`DefaultComponents
+  []IncidentComponent` — переиспользование), метод `Validate()` (непустое имя + валидный impact).
+  Добавлена ошибка `ErrInvalidIncidentImpact` в incident.go. Юнит-тест `incident_template_test.go`.
+- **sqlc** `queries/incident_templates.sql` → регенерация db (sqlc 1.31.1 brew).
+- **store** `internal/store/incident_templates.go`: Create/ByID(агрегат)/List(по странице)/Update
+  (replaceComponents)/Delete — транзакции, **без рекомпьюта** (шаблон не навязывает статус). Delete
+  грузит строку для ErrNotFound (hard delete).
+- **API** `internal/api/incident_templates.go`: POST/GET-list/GET-one/PATCH/DELETE под `requireAuth`,
+  авторизация `authorizePage`, валидация default_impact/имени, **переиспользует `parseIncidentComponents`**
+  (принадлежность компонентов странице). Хелпер `loadAuthorizedTemplate`. Список требует
+  `?status_page_id` (как /components). Роуты в server.go.
+- **Интеграционный тест** `incident_templates_integration_test.go` (skip без HEALTHPAGE_TEST_DB):
+  создание (компонент НЕ меняет статус) → list → get → patch (impact + замена компонентов на пустой) →
+  422 (impact/имя) → изоляция операторов (404) → delete/повторный 404 → 401. **PASS на PG16.**
+  Build/test/vet/gofmt/golangci-lint + admin build зелёные.
+
+**Этап 2.6 — store + API плановых работ (написано и проверено на живом PG, ждёт коммита):**
+- **Контракт:** в `MaintenanceCreate` добавлен обязательный `status_page_id` (uuid) — решение
+  человека (зеркалит 2.5). Типы перегенерированы (TS+Go). Изменение аддитивно; админка работ (2.9)
+  ещё не существует, `npm run build` admin зелёный.
+- **sqlc:** `internal/store/queries/maintenances.sql` → перегенерирован `internal/store/db`
+  (sqlc 1.31.1 brew, как в 2.5).
+- **store** (`internal/store/maintenances.go`): `CreateMaintenance` (работы + maintenance_components +
+  рекомпьют), `MaintenanceByID` (агрегат: строка + component_ids + лента), `UpdateMaintenance(m,
+  replaceComponents)` (affected = старые∪новые; смена статуса через `ApplyStatusChange` уже применена
+  вызывающим — store просто персистит StartedAt/CompletedAt и рекомпьютит), `AddMaintenanceUpdate`
+  (заметка БЕЗ статуса — смена статуса идёт через PATCH, не через updates; рекомпьют не нужен),
+  `SoftDeleteMaintenance` (рекомпьют — работы перестают навязывать under_maintenance). Всё в транзакциях.
+- **recompute расширен (закрыт TODO 2.5):** `recomputeComponentStatusesTx` (в `store/incidents.go`) —
+  теперь общий хелпер: читает И активные инциденты (`ListActiveIncidentComponentStatuses`), И активные
+  in_progress работы (`ListActiveMaintenanceComponentIDs`), собирает в агрегаты и зовёт
+  `domain.DerivedComponentStatus(cid, []Incident{...}, []Maintenance{...})`. Источник истории:
+  under_maintenance → `source=maintenance`, прочее (вкл. возврат в operational) → `source=incident`.
+- **API** (`internal/api/maintenances.go`): `POST /maintenances`, `PATCH /maintenances/{id}` (title/
+  description/status[lifecycle]/scheduled_*/component_ids), `DELETE /maintenances/{id}`,
+  `POST /maintenances/{id}/updates`. Все под `requireAuth`, авторизация `authorizePage`. Валидация:
+  `ValidateSchedule` (end>start) на create и при смене окна в patch, enum status, принадлежность
+  компонентов странице, RFC3339 (хелпер `parseRFC3339`). DTO синхронны с openapi (description как
+  `*string`: пустая строка БД → null в ответе).
+- **Интеграционный тест** `maintenances_integration_test.go` (skip без HEALTHPAGE_TEST_DB): создание
+  scheduled (компонент остаётся operational) → in_progress (компонент under_maintenance, публичная
+  сводка under_maintenance) → заметка-update (201, без статуса) → completed (возврат в operational) →
+  невалидный статус 422 → окно end≤start 422 → удаление in_progress (возврат компонента) → повторный
+  delete 404 → изоляция операторов (404) → 401. **PASS на реальном PG16.** Build/test/vet/gofmt/lint зелёные.
+
 **Этап 2.5 — store + API инцидентов (написано и проверено на живом PG, ждёт коммита):**
 - **Контракт:** в `IncidentCreate` добавлен обязательный `status_page_id` (uuid) — решение человека
   (зеркалит 1.5 для компонентов; флэт-роуты создания, авторизация по владению страницей). Типы
@@ -111,8 +168,8 @@ store с авто-переводом компонентов в under_maintenance
   `domain.DerivedComponentStatus`, и при изменении пишет статус через `changeComponentStatusTx`
   (рефакторинг: `ChangeComponentStatus` теперь обёртка над tx-хелпером) с source=incident. Если
   активных инцидентов на компонент нет → возврат в operational.
-  ⚠️ **TODO 2.6:** recompute передаёт `nil` вместо активных работ → авто-under_maintenance не
-  учитывается (сейчас безопасно: API работ ещё нет). 2.6 обязан расширить (см. «Следующий шаг»).
+  ✅ **Закрыто в 2.6:** recompute стал общим хелпером и учитывает также активные in_progress работы
+  (авто-under_maintenance). См. секцию 2.6 выше.
 - **Известное упрощение (флаг человеку):** при возврате компонента из инцидента ставится
   `operational`, ручной «базовый» статус не сохраняется (нет колонки baseline). DESIGN §3.3
   «если оператор не указал иное» в полном виде требовал бы baseline — отложено (возможная схема позже).
@@ -494,3 +551,17 @@ _Этап 0 — завершён и закоммичен._
   Контракт: +status_page_id в IncidentCreate (решение человека), типы перегенерированы. sqlc bump
   1.27.0→1.31.1 (brew). Интеграционный тест на реальном PG16 PASS. Дальше — 2.6 (store + API работ;
   обязательно расширить recompute активными работами).
+- 2026-06-28 — Этап 2.6 (store + API плановых работ): sqlc-запросы maintenances/*, store
+  (`maintenances.go`) с транзакциями; **recompute расширен** до общего хелпера (активные инциденты +
+  активные in_progress работы → авто-under_maintenance, source=maintenance). API POST/PATCH/DELETE
+  /maintenances + /maintenances/{id}/updates под requireAuth (смена статуса через PATCH, заметки через
+  updates без статуса). Контракт: +status_page_id в MaintenanceCreate (решение человека), типы
+  перегенерированы. Интеграционный тест на реальном PG16 PASS (scheduled→in_progress→under_maintenance→
+  completed→operational→delete-возврат→изоляция→401). Дальше — 2.7 (шаблоны инцидентов; возможна
+  развилка по openapi) или 2.8 (публичная история + наполнение active_maintenances).
+- 2026-06-29 — Этап 2.7 (шаблоны инцидентов): развилка контракта решена человеком (плоские роуты +
+  status_page_id; default_components как пары {component_id,status}; только CRUD, apply на клиенте).
+  Контракт расширен (IncidentTemplate/Create/Patch + /incident-templates*), типы перегенерированы.
+  Миграция 00007 (БД→7, hard-delete), домен+Validate (+ErrInvalidIncidentImpact), sqlc/store/API,
+  переиспользование IncidentComponent и parseIncidentComponents. Юнит + интеграционный тест на PG16
+  PASS. Дальше — 2.8 (публичная история + наполнение active_incidents/active_maintenances).

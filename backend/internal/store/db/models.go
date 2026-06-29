@@ -301,6 +301,26 @@ type IncidentComponent struct {
 	UpdatedAt                 time.Time
 }
 
+type IncidentTemplate struct {
+	ID            uuid.UUID
+	StatusPageID  uuid.UUID
+	Name          string
+	TitleTmpl     string
+	BodyTmpl      string
+	DefaultImpact IncidentImpact
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type IncidentTemplateComponent struct {
+	ID                        uuid.UUID
+	TemplateID                uuid.UUID
+	ComponentID               uuid.UUID
+	ComponentStatusInIncident ComponentStatus
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
+}
+
 type IncidentUpdate struct {
 	ID                uuid.UUID
 	IncidentID        uuid.UUID

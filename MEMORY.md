@@ -13,15 +13,17 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1 (миграции), 3.2 (топология), 3.3 (движок
-уведомлений) — готовы по коду, ждут коммита. Этапы 1–2 закоммичены человеком.
-**Следующий шаг:** Этап 3.4 — `worker-email`: consumer `q.email` (manual ack), SMTP-доставка (вкл.
-кастомный SMTP страницы), double opt-in, отписка по токену. Использовать готовое: `queue.Consume`
-(manual ack), `notify.Message` (формат сообщения с `notification_id`), `notify.Engine.Retry`
-(backoff/DLQ), store-хелперы `NotificationByID`/`MarkNotificationSent`/`MarkNotificationFailed`.
-Воркер: десериализует Message → проверяет идемпотентность (NotificationByID: если уже sent — Ack и
-выход) → шлёт письмо → MarkSent + Ack; при ошибке → Engine.Retry (republish delayed или mark failed
-+ Nack(requeue=false) → DLQ). Затем 3.5 (subscribe-эндпоинты), 3.7 telegram, …
+**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1 (миграции), 3.2 (топология), 3.3 (движок),
+3.4 (worker-email) — готовы по коду, ждут коммита. Этапы 1–2 закоммичены человеком.
+**Следующий шаг:** Этап 3.5 — эндпоинты подписки: `POST /pages/{slug}/subscribe` (создать Subscriber
+confirmed=false + случайный confirm-токен[хэш в `confirm_token`] → опубликовать письмо
+`subscriber_confirm` в q.email через `notify`/`queue.Publisher` с plaintext-токеном в `ConfirmPayload`),
+`GET /subscribe/confirm?token=` (хэш→поиск→confirmed=true), `GET /unsubscribe?token=`
+(`subscription.ParseUnsubscribeToken` → удалить подписчика). Готовое: формат письма + рендер confirm/
+unsubscribe уже в worker-email; `subscription.UnsubscribeToken/ParseUnsubscribeToken`; store
+`CreateSubscriber`/`SubscriberByID`. Нужны новые store-методы: `SubscriberByConfirmTokenHash`,
+`ConfirmSubscriber`, `DeleteSubscriber`. **SUBSCRIPTION_SECRET в api и worker-email должны совпадать**
+(в dev оба → JWT_SECRET). Затем 3.6 (RSS/iCal), 3.7 (telegram), …
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -119,6 +121,45 @@
   `queue_integration_test.go` (skip без `HEALTHPAGE_TEST_AMQP`): publisher confirm + маршрутизация →
   q.email; Nack(requeue=false) → dead-letter в q.dlq.email; delayed-публикация приходит через ~1s.
   **PASS.** go build/vet/gofmt/golangci-lint зелёные; backend и rabbitmq образы собираются.
+
+**Этап 3.4 — worker-email (написано, проверено на живых PG16+RabbitMQ, ждёт коммита):**
+- **Контракт НЕ менялся.** Новый пакет `internal/email` + команда `cmd/worker-email` + пакет
+  `internal/subscription` (токены) + расширение config.
+- **`internal/email/sender.go`:** `SMTP` (host/port/user/pass/from/tls — json-теги для page.smtp_config),
+  `Sender` интерфейс; `SMTPSender` (STARTTLS через net/smtp.SendMail; неявный TLS 465 через tls.Dial+
+  smtp.NewClient; PLAIN-auth) + `buildMIME` (multipart/alternative text+html, QEncode. Subject);
+  `LogSender` (dev/fallback — логирует, не шлёт).
+- **`internal/email/render.go`:** `Render(RenderInput)→Content{Subject,Text,HTML}` для событий
+  incident_new/update, maintenance_scheduled/started/completed, **subscriber_confirm**. i18n RU/EN
+  (статусы/impact/заголовки/подписи), ссылки: «открыть страницу», «отписаться», «подтвердить». HTML
+  экранируется (html.EscapeString).
+- **`internal/email/worker.go`:** `Worker.Process(ctx, body)→Disposition` (Ack/Reject→DLQ/Requeue).
+  Идемпотентность: NotificationByID — orphan(ErrNotFound)→Ack, уже sent→Ack. Сборка: грузит страницу
+  (locale/name/slug/smtp), парсит payload по событию, строит ссылки. Отправка через Sender; успех →
+  MarkNotificationSent+Ack; ошибка → `Retrier.Retry` (=notify.Engine): scheduled→Ack (отложенная
+  копия), исчерпано→Reject(DLQ); ошибка ретрая→Requeue. `effectiveSMTP`: page.smtp_config (+from_email)
+  иначе системный.
+- **`cmd/worker-email`:** store+queue, DeclareTopology (идемпотентно), Publisher+Engine(Retrier),
+  Sender (SMTPSender если SMTP_HOST задан, иначе LogSender), `queue.Consume(q.email, prefetch=16,
+  manual ack)` → Process→Ack/Nack. Graceful stop по сигналу.
+- **`internal/subscription/token.go`:** `UnsubscribeToken`/`ParseUnsubscribeToken` — HMAC-SHA256 от
+  subscriber_id (`<id>.<base64url(hmac)>`, constant-time сверка).
+- **Config:** SMTP_HOST/PORT(587)/USERNAME/PASSWORD/FROM/TLS, SUBSCRIPTION_SECRET (дефолт=JWT_SECRET).
+  .env.example, docker-compose (сервис worker-email), Dockerfile (бинарь /app/worker-email) обновлены.
+- **Решения/флаги:** (1) **Отписка — HMAC-stateless**: колонка `subscribers.unsubscribe_token`
+  НЕ используется (вестигиальна) — plaintext нельзя восстановить из хэша для каждого письма, поэтому
+  токен вычисляется из subscriber_id+секрет. Возможна будущая миграция-дроп колонки (с санкции человека).
+  (2) **PageURL = BASE_URL + /status/<slug>** — placeholder; в проде публичная страница на public-ssr
+  (нужен отдельный PUBLIC_BASE_URL или кастом-домен). Ссылки confirm/unsubscribe → API (BASE_URL +
+  /api/v1/...). (3) **SUBSCRIPTION_SECRET в api и worker должны совпадать** (для проверки токена отписки
+  эндпоинтом 3.5). (4) Кастомный SMTP страницы работает только при реальном SMTPSender (в dev LogSender
+  игнорирует cfg). (5) double opt-in: воркер умеет рендерить+слать confirm-письмо; **триггер (subscribe)
+  и confirm/unsubscribe-эндпоинты — этап 3.5**.
+- **Проверено:** юнит — `subscription/token_test` (round-trip+tamper), `email/render_test`
+  (incident RU, maintenance EN, confirm, ошибки), `email/worker_test` (happy/идемпотентный-skip/orphan/
+  retry-scheduled/retry-exhausted/malformed/unrenderable с фейками). Живой e2e `email/worker_integration_test`
+  (PG+AMQP: engine→q.email→worker доставил, NotificationByID→sent, повтор не дублирует). build/test/vet/
+  gofmt/golangci-lint зелёные.
 
 **Этап 3.3 — движок уведомлений (написано, проверено на живых PG16+RabbitMQ, ждёт коммита):**
 - **Контракт НЕ менялся** (subscribers/notifications уже в схеме с 3.1; enum-значения = openapi

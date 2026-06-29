@@ -40,6 +40,7 @@ const (
 	EventMaintenanceScheduled EventType = "maintenance_scheduled" // запланированы работы
 	EventMaintenanceStarted   EventType = "maintenance_started"   // работы начались (in_progress)
 	EventMaintenanceCompleted EventType = "maintenance_completed" // работы завершены
+	EventSubscriberConfirm    EventType = "subscriber_confirm"    // письмо double opt-in (этап 3.5)
 )
 
 // ── Сущность ──

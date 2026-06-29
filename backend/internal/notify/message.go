@@ -43,6 +43,12 @@ type MaintenancePayload struct {
 	Components     []string  `json:"components,omitempty"`
 }
 
+// ConfirmPayload — содержимое письма double opt-in (subscriber_confirm). Публикуется флоу
+// подписки (этап 3.5), несёт plaintext-токен подтверждения (в БД хранится только его хэш, §9).
+type ConfirmPayload struct {
+	ConfirmToken string `json:"confirm_token"`
+}
+
 func incidentPayload(inc domain.Incident, body string) IncidentPayload {
 	comps := make([]string, len(inc.Components))
 	for i, c := range inc.Components {

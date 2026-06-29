@@ -227,7 +227,18 @@
       рассылка off, API работает). Юнит-тесты (домен+движок с фейками), интеграционные на PG16
       (подписчики/журнал) и живой e2e движок+брокер (фан-аут→q.email с notification_id). build/test/
       vet/gofmt/golangci-lint зелёные. Ждёт коммита.
-- [ ] **3.4** `worker-email`: SMTP (вкл. кастомный SMTP страницы); double opt-in; отписка по токену.
+- [x] **3.4** `worker-email`: SMTP (вкл. кастомный SMTP страницы); double opt-in; отписка по токену.
+      — ✅ Контракт НЕ менялся. `internal/email`: `Sender` (SMTPSender — STARTTLS/неявный TLS + MIME
+      multipart/alternative; LogSender — dev-заглушка), `Render` (RU/EN письма для incident_new/update,
+      maintenance_scheduled/started/completed, subscriber_confirm; ссылки на страницу/отписку/подтверждение),
+      `Worker.Process` (идемпотентность по Notification.id, выбор SMTP страница-vs-системный, ретрай через
+      `notify.Engine.Retry` или DLQ при исчерпании; Disposition Ack/Reject/Requeue). `cmd/worker-email`
+      consume q.email (manual ack, prefetch=16). `internal/subscription.UnsubscribeToken` — HMAC-stateless
+      (см. флаг про колонку unsubscribe_token). Config: SMTP_*/SUBSCRIPTION_SECRET (дефолт=JWT_SECRET).
+      Dockerfile+compose: сервис worker-email. **Эндпоинты subscribe/confirm/unsubscribe — это 3.5**;
+      здесь готова доставка (вкл. рендер confirm/unsubscribe-ссылок). Юнит-тесты (token/render/worker с
+      фейками) + живой e2e (engine→q.email→worker доставил+sent, повтор идемпотентен). build/test/vet/
+      gofmt/golangci-lint зелёные. Ждёт коммита.
 - [ ] **3.5** Email-подписка: `POST /pages/{slug}/subscribe`, confirm, unsubscribe.
 - [ ] **3.6** RSS/Atom фид и iCal-фид (публичные эндпоинты).
 - [ ] **3.7** `worker-telegram`: бот, подписка на страницу/компоненты, доставка.

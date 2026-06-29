@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -20,6 +21,18 @@ type Config struct {
 	JWTSecret  string        // секрет подписи операторских access-JWT
 	AccessTTL  time.Duration // срок жизни access-токена
 	RefreshTTL time.Duration // срок жизни refresh-токена
+
+	// SubscriptionSecret — секрет подписи capability-токенов отписки (HMAC). Если не задан —
+	// падает на JWTSecret (dev), чтобы воркер и эндпоинты подписки сходились.
+	SubscriptionSecret string
+
+	// Системный SMTP (дефолтный отправитель). Страница может переопределить своим smtp_config.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string // адрес отправителя по умолчанию
+	SMTPTLS      bool   // true — неявный TLS (порт 465); иначе STARTTLS
 }
 
 // IsProd сообщает, работаем ли в prod-режиме (влияет, напр., на флаг Secure у cookie).
@@ -27,7 +40,7 @@ func (c Config) IsProd() bool { return c.AppEnv == "prod" }
 
 // Load читает конфигурацию из окружения, подставляя dev-дефолты.
 func Load() Config {
-	return Config{
+	c := Config{
 		AppEnv:      env("APP_ENV", "dev"),
 		HTTPPort:    env("HTTP_PORT", "8080"),
 		DatabaseURL: env("DATABASE_URL", ""),
@@ -37,7 +50,21 @@ func Load() Config {
 		JWTSecret:   env("JWT_SECRET", ""),
 		AccessTTL:   envDuration("ACCESS_TTL", 15*time.Minute),
 		RefreshTTL:  envDuration("REFRESH_TTL", 30*24*time.Hour),
+
+		SubscriptionSecret: env("SUBSCRIPTION_SECRET", ""),
+
+		SMTPHost:     env("SMTP_HOST", ""),
+		SMTPPort:     envInt("SMTP_PORT", 587),
+		SMTPUsername: env("SMTP_USERNAME", ""),
+		SMTPPassword: env("SMTP_PASSWORD", ""),
+		SMTPFrom:     env("SMTP_FROM", ""),
+		SMTPTLS:      env("SMTP_TLS", "") == "true",
 	}
+	// Дефолт секрета отписки — операторский JWT-секрет (для dev/одно-процессного запуска).
+	if c.SubscriptionSecret == "" {
+		c.SubscriptionSecret = c.JWTSecret
+	}
+	return c
 }
 
 // MustDatabaseURL возвращает строку подключения к БД или завершает процесс,
@@ -63,6 +90,15 @@ func (c Config) MustRabbitMQURL() string {
 func env(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		return v
+	}
+	return fallback
+}
+
+func envInt(key string, fallback int) int {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

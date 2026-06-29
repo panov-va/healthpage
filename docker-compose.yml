@@ -2,8 +2,9 @@
 # Логические связи сервисов/очередей — в DESIGN.md §8/§8.1, здесь только развёртывание.
 # Запуск: cp .env.example .env && docker compose up -d
 #
-# Примечание: плагин rabbitmq_delayed_message_exchange (DESIGN §8.1) подключается
-# на этапе 3, когда строится топология очередей. На этапе 0 нужен лишь живой брокер.
+# RabbitMQ собирается из docker/rabbitmq/Dockerfile — базовый образ + плагин
+# rabbitmq_delayed_message_exchange (DESIGN §8.1). Топология (exchange'и/очереди) объявляется
+# командой `queue-setup`, идемпотентно: docker compose run --rm --entrypoint /app/queue-setup api.
 
 services:
   postgres:
@@ -33,7 +34,8 @@ services:
       retries: 10
 
   rabbitmq:
-    image: rabbitmq:3-management-alpine
+    build:
+      context: ./docker/rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-healthpage}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-healthpage}

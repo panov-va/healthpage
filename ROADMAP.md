@@ -201,8 +201,17 @@
       FK CASCADE (страница→подписчики→уведомления); unique (page,channel,address); partial-unique по
       токенам; индексы page/subscriber/status; триггеры updated_at. Проверено на PG16: up→v8, схема,
       CHECK/unique/cascade/trigger (cross-tx), down (чисто) → up. Контракт не менялся. Ждёт коммита.
-- [ ] **3.2** RabbitMQ: exchange'и и очереди по DESIGN §8.1 (notifications topic, q.email,
+- [x] **3.2** RabbitMQ: exchange'и и очереди по DESIGN §8.1 (notifications topic, q.email,
       q.telegram, q.max, q.slack, DLQ, delayed exchange). Publisher confirms + manual ack.
+      — ✅ Свой образ брокера (`docker/rabbitmq/Dockerfile`: base + плагин
+      `rabbitmq_delayed_message_exchange` 3.13.0; compose `build:`). Пакет `internal/queue`:
+      `DeclareTopology` (exchange'и notifications/webhooks.out/delayed.events/dlx; очереди
+      `q.<channel>`+`q.dlq.<channel>`+`q.webhook.out` с DLX; привязки notify.<channel>.* к
+      notifications и delayed.events), `Publisher` (publisher confirms; обычная + отложенная публикация
+      через `x-delay`), `Consume` (manual ack, для 3.4+). Команда `cmd/queue-setup` (идемпотентно;
+      в backend-образе). Dep amqp091-go. Проверено на живом брокере: топология по §8.1
+      (list_exchanges/queues/bindings), интеграционный тест confirm/DLX/delayed PASS;
+      build/vet/lint + оба образа зелёные. Ждёт коммита.
 - [ ] **3.3** Движок уведомлений: публикация событий (новый инцидент, обновление с notify,
       старт/конец работ) в очередь; идемпотентность по `Notification.id`; ретраи с backoff; DLQ.
 - [ ] **3.4** `worker-email`: SMTP (вкл. кастомный SMTP страницы); double opt-in; отписка по токену.

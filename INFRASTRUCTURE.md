@@ -35,9 +35,19 @@ docker compose exec api /app/migrate status    # статус
 docker compose exec api /app/migrate down      # откатить одну
 # с хоста (нужен DATABASE_URL, см. .env): make migrate-up / migrate-status / migrate-down
 
+# топология RabbitMQ (exchange'и/очереди/DLQ/delayed — DESIGN §8.1), идемпотентно:
+docker compose run --rm --entrypoint /app/queue-setup api
+# (--entrypoint обязателен: образ api имеет ENTRYPOINT=/app/api, иначе путь уйдёт аргументом в api;
+#  требует RABBITMQ_URL; внутри сети compose хост брокера — rabbitmq:5672)
+
 # проверка:
 curl http://localhost:8080/healthz   # -> 200 {"status":"ok"}
 ```
+
+> **RabbitMQ-образ собирается локально** из `docker/rabbitmq/Dockerfile` (базовый
+> `rabbitmq:3.13-management-alpine` + плагин `rabbitmq_delayed_message_exchange` для отложенных
+> событий). Сборка плагина требует доступа в интернет (`docker compose build rabbitmq`).
+> Топология объявляется командой `queue-setup` (см. выше); сами воркеры-потребители — этап 3.4+.
 
 Сборка/тесты/линт без docker: `make build`, `make test`, `make lint` (см. `make help`).
 Кодогенерация: `make gen` = типы из openapi.yaml (`gen-go` + `gen-ts`) **и** store-код из
@@ -65,7 +75,7 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 | admin | Админка (React SPA, Vite) | `admin` | 5173 (dev) | каркас, не в compose |
 | postgres | БД (источник истины) | `postgres` | 5432 | в compose |
 | redis | Кэш публичной сводки | `redis` | 6379 | в compose |
-| rabbitmq | Очередь уведомлений/webhook | `rabbitmq` | 5672 / 15672 (UI) | в compose |
+| rabbitmq | Очередь уведомлений/webhook | `rabbitmq` | 5672 / 15672 (UI) | в compose (свой образ: +delayed-плагин) |
 | worker-email | Доставка email (SMTP) | `worker-email` | — | не создан |
 | worker-telegram | Доставка Telegram | `worker-telegram` | — | не создан |
 | worker-max | Доставка MAX | `worker-max` | — | не создан |

@@ -50,6 +50,16 @@ func (c Config) MustDatabaseURL() string {
 	return c.DatabaseURL
 }
 
+// MustRabbitMQURL возвращает строку подключения к RabbitMQ или завершает процесс,
+// если она не задана (используется командой queue-setup и воркерами этапа 3).
+func (c Config) MustRabbitMQURL() string {
+	if c.RabbitMQURL == "" {
+		fmt.Fprintln(os.Stderr, "RABBITMQ_URL is required")
+		os.Exit(1)
+	}
+	return c.RabbitMQURL
+}
+
 func env(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		return v

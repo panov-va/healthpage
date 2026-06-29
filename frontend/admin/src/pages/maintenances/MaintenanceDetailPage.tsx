@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { listComponents } from "@/entities/component";
 import type { Component } from "@/entities/component";
-import { deleteMaintenance, listMaintenances } from "@/entities/maintenance";
+import { deleteMaintenance, getMaintenance } from "@/entities/maintenance";
 import type { Maintenance } from "@/entities/maintenance";
 import { getPage } from "@/entities/page";
 import type { StatusPage } from "@/entities/page";
@@ -14,10 +14,6 @@ import { formatDateTime, maintenanceStatusLabel } from "@/shared/lib/incident";
 import { Button, Card } from "@/shared/ui";
 import { PageNav } from "@/widgets/page-nav";
 
-// В контракте нет GET одной работы — находим работу в публичном списке
-// `/pages/{slug}/maintenances`. Для MVP-объёмов берём широкую страницу (per_page=100).
-const SEARCH_PER_PAGE = 100;
-
 export function MaintenanceDetailPage() {
   const { id = "", maintenanceId = "" } = useParams();
   const navigate = useNavigate();
@@ -27,29 +23,17 @@ export function MaintenanceDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const slug = page?.slug ?? "";
-
   const reload = useCallback(() => {
-    if (!slug) return Promise.resolve();
-    return listMaintenances(slug, { perPage: SEARCH_PER_PAGE }).then((res) => {
-      const found = (res.items ?? []).find((m) => m.id === maintenanceId) ?? null;
-      setMaintenance(found);
-      if (!found) setError("Работы не найдены");
-    });
-  }, [slug, maintenanceId]);
+    return getMaintenance(maintenanceId).then(setMaintenance);
+  }, [maintenanceId]);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getPage(id), listComponents(id)])
-      .then(([p, c]) => {
+    Promise.all([getPage(id), listComponents(id), getMaintenance(maintenanceId)])
+      .then(([p, c, m]) => {
         setPage(p);
         setComponents(c);
-        return listMaintenances(p.slug, { perPage: SEARCH_PER_PAGE });
-      })
-      .then((res) => {
-        const found = (res.items ?? []).find((m) => m.id === maintenanceId) ?? null;
-        setMaintenance(found);
-        if (!found) setError("Работы не найдены");
+        setMaintenance(m);
       })
       .catch((err) =>
         setError(err instanceof HttpError ? err.message : "Не удалось загрузить работы"),

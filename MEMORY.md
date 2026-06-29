@@ -13,17 +13,16 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1–2.9** написаны и проверены, ждут коммита человеком.
+Задачи 1.1–1.10 + фикс main.go + **2.1–2.9 + админские read-эндпоинты инцидентов/работ** написаны
+и проверены, ждут коммита человеком.
 **Следующий шаг:** Этап 2.10 — публичный SSR (`public-ssr`): вкладки «Инциденты» и «Плановые работы»
 + детальные страницы. Эндпоинты публичные (`/pages/{slug}/incidents`, `/incidents/{id}`,
 `/maintenances`) уже готовы (2.8). Затем этап 3 (подписки/уведомления).
 
-⚠️ **Флаг человеку (контракт, решение нужно):** в админке листинг/detail инцидентов и работ идёт
-через ПУБЛИЧНЫЕ эндпоинты `/pages/{slug}/...` — отдельных админских list/GET-эндпоинтов в openapi
-нет. Следствие: **скрытые инциденты (is_visible=false) недоступны оператору** (публичный список их
-исключает, detail → 404). Также нет GET одной работы (detail ищет работу в списке, per_page=100).
-Для полноценной админки нужно добавить админские read-эндпоинты (`GET /incidents` со status_page_id,
-`GET /incidents/{id}` без скрытия, `GET /maintenances`+`/maintenances/{id}`) — это изменение контракта.
+✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
+`GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
+(без скрытия), `GET /maintenances`, `GET /maintenances/{id}`. Админка теперь листит/читает инциденты и
+работы через них (а не через публичные `/pages/{slug}/...`), скрытые инциденты доступны оператору.
 
 Готовые артефакты:
 - `DESIGN.md` — дизайн-документ (нормативный, финальный для MVP).
@@ -93,6 +92,32 @@
 ---
 
 ## Что в работе
+
+**Админские read-эндпоинты инцидентов/работ (контракт расширен с санкции человека; написано, тесты PASS, ждёт коммита):**
+- **Контракт (openapi.yaml):** добавлены `GET /incidents` (tag Incidents; query `status_page_id`+`status`+
+  `impact`+`component_id`+Page/PerPage → IncidentList; **включает скрытые** is_visible=false),
+  `GET /incidents/{id}` (Incident, без скрытия), `GET /maintenances` (query status_page_id+status+
+  пагинация → MaintenanceList), `GET /maintenances/{id}` (Maintenance). Под global security (JWT/ApiToken).
+  Типы перегенерированы (TS+Go), openapi провалиден (оба gen прошли).
+- **sqlc** (incidents.sql): новые `ListIncidents`+`CountIncidents` — копия публичных, но **без**
+  `is_visible = true`. Работы признака видимости не имеют → админский список переиспользует
+  `ListPublicMaintenances`, а GET одной — существующий `MaintenanceByID`. db перегенерирован (sqlc 1.31.1).
+- **store** (`incidents.go`): `ListIncidents(pageID,filter,limit,offset)` (та же гидрация/фильтры, что
+  ListPublicIncidents, но включает скрытые).
+- **API:** `handleListIncidents`/`handleGetIncident` (incidents.go), `handleListMaintenances`/
+  `handleGetMaintenance` (maintenances.go) под requireAuth, авторизация `authorizePage`. Извлечены общие
+  хелперы `parseIncidentFilter`/`parseMaintenanceStatusFilter` (public_history.go) — публичные хендлеры
+  отрефакторены на них. Роуты `GET /incidents`, `GET /incidents/{id}`, `GET /maintenances`,
+  `GET /maintenances/{id}` в server.go (рядом с POST/PATCH). Список переиспользует
+  `incidentListResponse`/`maintenanceListResponse`/`parsePagination`.
+- **Фронт (admin):** `entities/incident` listIncidents(statusPageId,...) + getIncident(id) — теперь по
+  id, без slug; `entities/maintenance` listMaintenances(statusPageId,...) + новый getMaintenance(id).
+  Страницы incidents/maintenances (list+detail) переведены на эти эндпоинты — **detail работы больше не
+  ищет в списке** (прямой GET), скрытые инциденты видны в админке. `npm run build` зелёный.
+- **Тесты:** интеграционные расширены — incidents (скрытый: в админском списке/фильтре/GET есть, в
+  публичном нет → 404; изоляция оператора 404; 401), maintenances (админский список+фильтр+GET; изоляция;
+  401). **PASS на PG16** (api+store). go build/vet/gofmt/golangci-lint зелёные. e2e-смоук на живом
+  api+PG PASS (скрытый в админ-списке, public 404, изоляция, 401).
 
 **Этап 2.9 — админка инцидентов/работ/шаблонов + «применить шаблон» (написано, build зелёный, e2e-смоук на живом стеке PASS, ждёт коммита):**
 - **Контракт НЕ менялся.** Только `frontend/admin` (FSD), типы из `@api-types` (уже сгенерированы в 2.5–2.7).
@@ -639,3 +664,10 @@ _Этап 0 — завершён и закоммичен._
   листинг через публичные эндпоинты. ⚠️ Флаг: скрытые инциденты недоступны оператору (нужен админский
   read-API — контракт/человек). build зелёный, e2e-смоук на живом стеке PASS. Дальше — 2.10 (публичный SSR
   вкладки Инциденты/Работы + detail).
+- 2026-06-29 — Админские read-эндпоинты инцидентов/работ (по запросу человека, контракт расширен):
+  `GET /incidents`(+фильтры/пагинация, включая скрытые)/`/incidents/{id}`, `GET /maintenances`/
+  `/maintenances/{id}`. sqlc ListIncidents/CountIncidents (без is_visible), store.ListIncidents, API-хендлеры
+  + общие хелперы фильтров (рефактор публичных), роуты. Фронт-админка переведена на новые эндпоинты (по id,
+  без slug; detail работы — прямой GET). Закрыт флаг 2.9 (скрытые инциденты теперь доступны оператору).
+  Интеграционные тесты расширены, PASS на PG16; build/vet/lint/admin-build зелёные; e2e-смоук PASS.
+  Дальше — 2.10 (публичный SSR вкладки Инциденты/Работы + detail).

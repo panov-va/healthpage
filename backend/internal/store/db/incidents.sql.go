@@ -75,6 +75,35 @@ func (q *Queries) AddIncidentUpdate(ctx context.Context, arg AddIncidentUpdatePa
 	return i, err
 }
 
+const countIncidents = `-- name: CountIncidents :one
+SELECT count(*) FROM incidents
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND ($2::incident_status IS NULL OR current_status = $2)
+  AND ($3::incident_impact IS NULL OR impact = $3)
+  AND ($4::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = $4))
+`
+
+type CountIncidentsParams struct {
+	StatusPageID uuid.UUID
+	Status       NullIncidentStatus
+	Impact       NullIncidentImpact
+	ComponentID  *uuid.UUID
+}
+
+func (q *Queries) CountIncidents(ctx context.Context, arg CountIncidentsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countIncidents,
+		arg.StatusPageID,
+		arg.Status,
+		arg.Impact,
+		arg.ComponentID,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countPublicIncidents = `-- name: CountPublicIncidents :one
 SELECT count(*) FROM incidents
 WHERE status_page_id = $1
@@ -319,6 +348,69 @@ func (q *Queries) ListIncidentUpdates(ctx context.Context, incidentID uuid.UUID)
 			&i.NotifySubscribers,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIncidents = `-- name: ListIncidents :many
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at FROM incidents
+WHERE status_page_id = $1
+  AND deleted_at IS NULL
+  AND ($2::incident_status IS NULL OR current_status = $2)
+  AND ($3::incident_impact IS NULL OR impact = $3)
+  AND ($4::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = $4))
+ORDER BY started_at DESC
+LIMIT $6 OFFSET $5
+`
+
+type ListIncidentsParams struct {
+	StatusPageID uuid.UUID
+	Status       NullIncidentStatus
+	Impact       NullIncidentImpact
+	ComponentID  *uuid.UUID
+	Off          int32
+	Lim          int32
+}
+
+// Админский список инцидентов страницы: не удалённые, но **включая скрытые** (is_visible любое),
+// с теми же фильтрами и пагинацией, что и публичная история. Для управления оператором.
+func (q *Queries) ListIncidents(ctx context.Context, arg ListIncidentsParams) ([]Incident, error) {
+	rows, err := q.db.Query(ctx, listIncidents,
+		arg.StatusPageID,
+		arg.Status,
+		arg.Impact,
+		arg.ComponentID,
+		arg.Off,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Incident{}
+	for rows.Next() {
+		var i Incident
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatusPageID,
+			&i.Title,
+			&i.CurrentStatus,
+			&i.Impact,
+			&i.StartedAt,
+			&i.ResolvedAt,
+			&i.Postmortem,
+			&i.IsVisible,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}

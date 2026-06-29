@@ -168,9 +168,10 @@
       component-checklist (работы), page-nav (вкладки разделов); `pages` incidents (список+фильтры
       status/impact/компонент+пагинация / detail с лентой), maintenances (список+фильтр / detail),
       templates. Роуты `/pages/:id/{incidents,maintenances,templates}` + detail. Типы из `@api-types`.
-      **Листинг — через ПУБЛИЧНЫЕ `/pages/{slug}/...`** (админских list-эндпоинтов в контракте нет);
-      ⚠️ скрытые инциденты (is_visible=false) в списке/detail недоступны — нужен админский read-API
-      (контракт, решение человека). `npm run build` зелёный; e2e-смоук на живом стеке PASS. Ждёт коммита.
+      Листинг/detail — через **админские read-эндпоинты** `GET /incidents`(+фильтры,включая скрытые)/
+      `/incidents/{id}`, `GET /maintenances`/`/maintenances/{id}` (добавлены в контракт с санкции человека;
+      sqlc ListIncidents без is_visible, store/API-хендлеры под requireAuth, интеграционные тесты PASS на
+      PG16). `npm run build` зелёный; e2e-смоук на живом стеке PASS. Ждёт коммита.
 - [ ] **2.10** Публичный SSR: вкладки «Инциденты» и «Плановые работы», детальные страницы.
 
 **Acceptance:** полный жизненный цикл инцидента отражается на публичной странице и в истории;

@@ -984,7 +984,36 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Список инцидентов (админ — включая скрытые) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Страница, чьи инциденты вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. В отличие от публичной истории, возвращает и скрытые (is_visible=false) инциденты. */
+                    status_page_id?: string;
+                    status?: components["schemas"]["IncidentStatus"];
+                    impact?: components["schemas"]["IncidentImpact"];
+                    component_id?: string;
+                    page?: components["parameters"]["Page"];
+                    per_page?: components["parameters"]["PerPage"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IncidentList"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
         put?: never;
         /** Создать инцидент */
         post: {
@@ -1026,7 +1055,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Получить инцидент (админ — включая скрытый) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Incident"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         put?: never;
         post?: never;
         /** Удалить инцидент */
@@ -1294,7 +1347,34 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Список плановых работ (админ) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Страница, чьи работы вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. */
+                    status_page_id?: string;
+                    status?: components["schemas"]["MaintenanceStatus"];
+                    page?: components["parameters"]["Page"];
+                    per_page?: components["parameters"]["PerPage"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MaintenanceList"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
         put?: never;
         /** Создать плановые работы */
         post: {
@@ -1336,7 +1416,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Получить плановые работы (админ) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Maintenance"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         put?: never;
         post?: never;
         /** Удалить работы */

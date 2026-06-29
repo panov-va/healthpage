@@ -26,11 +26,8 @@ export function MaintenancesListPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const slug = page?.slug ?? "";
-
   const reload = useCallback(() => {
-    if (!slug) return Promise.resolve();
-    return listMaintenances(slug, {
+    return listMaintenances(id, {
       status: status || undefined,
       page: pageNum,
       perPage: PER_PAGE,
@@ -38,7 +35,7 @@ export function MaintenancesListPage() {
       setItems(res.items ?? []);
       setTotal(res.pagination?.total ?? 0);
     });
-  }, [slug, status, pageNum]);
+  }, [id, status, pageNum]);
 
   useEffect(() => {
     setLoading(true);

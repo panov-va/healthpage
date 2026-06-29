@@ -156,6 +156,53 @@ func (s *Store) ListPublicIncidents(
 	return out, int(total), nil
 }
 
+// ListIncidents — админский список инцидентов страницы (не удалённые, **включая скрытые**) с теми
+// же фильтрами/пагинацией, что и публичная история. Для управления оператором. Возвращает страницу
+// агрегатов и общее число подходящих записей.
+func (s *Store) ListIncidents(
+	ctx context.Context, pageID uuid.UUID, f IncidentFilter, limit, offset int,
+) ([]domain.Incident, int, error) {
+	var status db.NullIncidentStatus
+	if f.Status != nil {
+		status = db.NullIncidentStatus{IncidentStatus: db.IncidentStatus(*f.Status), Valid: true}
+	}
+	var impact db.NullIncidentImpact
+	if f.Impact != nil {
+		impact = db.NullIncidentImpact{IncidentImpact: db.IncidentImpact(*f.Impact), Valid: true}
+	}
+
+	rows, err := s.q.ListIncidents(ctx, db.ListIncidentsParams{
+		StatusPageID: pageID,
+		Status:       status,
+		Impact:       impact,
+		ComponentID:  f.ComponentID,
+		Lim:          int32(limit),
+		Off:          int32(offset),
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: list incidents: %w", err)
+	}
+	total, err := s.q.CountIncidents(ctx, db.CountIncidentsParams{
+		StatusPageID: pageID,
+		Status:       status,
+		Impact:       impact,
+		ComponentID:  f.ComponentID,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("store: count incidents: %w", err)
+	}
+
+	out := make([]domain.Incident, len(rows))
+	for i, row := range rows {
+		hydrated, err := s.hydrateIncident(ctx, mapIncident(row))
+		if err != nil {
+			return nil, 0, err
+		}
+		out[i] = hydrated
+	}
+	return out, int(total), nil
+}
+
 // ListActiveIncidents возвращает активные (не resolved, видимые) инциденты страницы для публичной
 // сводки — полными агрегатами.
 func (s *Store) ListActiveIncidents(ctx context.Context, pageID uuid.UUID) ([]domain.Incident, error) {

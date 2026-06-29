@@ -71,6 +71,28 @@ WHERE status_page_id = @status_page_id
   AND (sqlc.narg('component_id')::uuid IS NULL OR id IN (
         SELECT incident_id FROM incident_components WHERE component_id = sqlc.narg('component_id')));
 
+-- Админский список инцидентов страницы: не удалённые, но **включая скрытые** (is_visible любое),
+-- с теми же фильтрами и пагинацией, что и публичная история. Для управления оператором.
+-- name: ListIncidents :many
+SELECT * FROM incidents
+WHERE status_page_id = @status_page_id
+  AND deleted_at IS NULL
+  AND (sqlc.narg('status')::incident_status IS NULL OR current_status = sqlc.narg('status'))
+  AND (sqlc.narg('impact')::incident_impact IS NULL OR impact = sqlc.narg('impact'))
+  AND (sqlc.narg('component_id')::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = sqlc.narg('component_id')))
+ORDER BY started_at DESC
+LIMIT @lim OFFSET @off;
+
+-- name: CountIncidents :one
+SELECT count(*) FROM incidents
+WHERE status_page_id = @status_page_id
+  AND deleted_at IS NULL
+  AND (sqlc.narg('status')::incident_status IS NULL OR current_status = sqlc.narg('status'))
+  AND (sqlc.narg('impact')::incident_impact IS NULL OR impact = sqlc.narg('impact'))
+  AND (sqlc.narg('component_id')::uuid IS NULL OR id IN (
+        SELECT incident_id FROM incident_components WHERE component_id = sqlc.narg('component_id')));
+
 -- Активные (не resolved, видимые) инциденты страницы — для публичной сводки.
 -- name: ListActivePublicIncidents :many
 SELECT * FROM incidents

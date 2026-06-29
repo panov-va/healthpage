@@ -102,6 +102,51 @@ type addIncidentUpdateRequest struct {
 
 // ── Хендлеры ──
 
+// handleListIncidents — админский список инцидентов страницы (включая скрытые) с фильтрами и
+// пагинацией. Требует ?status_page_id (при операторском JWT); авторизация по владению страницей.
+func (s *server) handleListIncidents(w http.ResponseWriter, r *http.Request) {
+	raw := r.URL.Query().Get("status_page_id")
+	pageID, err := uuid.Parse(raw)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+		return
+	}
+	if _, ok := s.authorizePage(w, r, pageID); !ok {
+		return
+	}
+	filter, ok := parseIncidentFilter(w, r)
+	if !ok {
+		return
+	}
+	pageNum, perPage, offset := parsePagination(r)
+	incidents, total, err := s.store.ListIncidents(r.Context(), pageID, filter, perPage, offset)
+	if err != nil {
+		writeServerError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, incidentListResponse{
+		Items:      toIncidentResponses(incidents),
+		Pagination: paginationResponse{Page: pageNum, PerPage: perPage, Total: total},
+	})
+}
+
+// handleGetIncident — админский просмотр инцидента (включая скрытый), авторизация по владению.
+func (s *server) handleGetIncident(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	inc, err := s.store.IncidentByID(r.Context(), id)
+	if err != nil {
+		s.writeLoadError(w, err, "инцидент не найден")
+		return
+	}
+	if _, ok := s.authorizePage(w, r, inc.StatusPageID); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, toIncidentResponse(inc))
+}
+
 func (s *server) handleCreateIncident(w http.ResponseWriter, r *http.Request) {
 	var req createIncidentRequest
 	if !decodeJSON(w, r, &req) {

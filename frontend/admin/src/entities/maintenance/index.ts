@@ -1,5 +1,6 @@
 export {
   listMaintenances,
+  getMaintenance,
   createMaintenance,
   patchMaintenance,
   deleteMaintenance,

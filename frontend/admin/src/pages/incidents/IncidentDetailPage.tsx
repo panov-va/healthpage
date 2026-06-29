@@ -28,22 +28,18 @@ export function IncidentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const slug = page?.slug ?? "";
-
   const reloadIncident = useCallback(() => {
-    if (!slug) return Promise.resolve();
-    return getIncident(slug, incidentId).then(setIncident);
-  }, [slug, incidentId]);
+    return getIncident(incidentId).then(setIncident);
+  }, [incidentId]);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getPage(id), listComponents(id)])
-      .then(([p, c]) => {
+    Promise.all([getPage(id), listComponents(id), getIncident(incidentId)])
+      .then(([p, c, inc]) => {
         setPage(p);
         setComponents(c);
-        return getIncident(p.slug, incidentId);
+        setIncident(inc);
       })
-      .then(setIncident)
       .catch((err) =>
         setError(err instanceof HttpError ? err.message : "Не удалось загрузить инцидент"),
       )

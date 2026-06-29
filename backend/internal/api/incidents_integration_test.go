@@ -162,8 +162,56 @@ func TestIncidentsIntegration(t *testing.T) {
 	doStatus(t, http.MethodDelete, srv.URL+"/api/v1/incidents/"+inc2.ID, token, nil, http.StatusNoContent)
 	doStatus(t, http.MethodDelete, srv.URL+"/api/v1/incidents/"+inc2.ID, token, nil, http.StatusNotFound)
 
+	// ── админские read-эндпоинты (включая скрытые) ──
+	var inc3 incidentResponse
+	doJSON(t, srv.URL+"/api/v1/incidents", token, map[string]any{
+		"status_page_id": page.ID, "title": "Hidden", "status": "investigating", "impact": "minor", "body": "...",
+	}, http.StatusCreated, &inc3)
+	patchJSON(t, srv.URL+"/api/v1/incidents/"+inc3.ID, token, map[string]any{"is_visible": false}, http.StatusOK, &patched)
+	if patched.IsVisible {
+		t.Fatalf("incident must be hidden after patch")
+	}
+
+	// админский список включает скрытый (и с фильтром по impact)
+	var adminList incidentListResponse
+	doJSON(t, srv.URL+"/api/v1/incidents?status_page_id="+page.ID, token, nil, http.StatusOK, &adminList)
+	if !containsIncidentID(adminList.Items, inc3.ID) {
+		t.Fatalf("admin list must include hidden incident")
+	}
+	doJSON(t, srv.URL+"/api/v1/incidents?status_page_id="+page.ID+"&impact=minor", token, nil, http.StatusOK, &adminList)
+	if !containsIncidentID(adminList.Items, inc3.ID) {
+		t.Fatalf("admin filter (impact=minor) must include hidden incident")
+	}
+	// админский GET одного скрытого → 200
+	var adminInc incidentResponse
+	doJSON(t, srv.URL+"/api/v1/incidents/"+inc3.ID, token, nil, http.StatusOK, &adminInc)
+	if adminInc.IsVisible {
+		t.Fatalf("admin get must return the hidden incident")
+	}
+	// публичная история скрытый НЕ содержит, detail → 404
+	var pubList incidentListResponse
+	doJSON(t, srv.URL+"/api/v1/pages/"+page.Slug+"/incidents", "", nil, http.StatusOK, &pubList)
+	if containsIncidentID(pubList.Items, inc3.ID) {
+		t.Fatalf("public history must exclude hidden incident")
+	}
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/pages/"+page.Slug+"/incidents/"+inc3.ID, "", nil, http.StatusNotFound)
+	// изоляция: чужой оператор не видит список/инцидент (404)
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/incidents?status_page_id="+page.ID, other, nil, http.StatusNotFound)
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/incidents/"+inc3.ID, other, nil, http.StatusNotFound)
+	// без токена → 401
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/incidents?status_page_id="+page.ID, "", nil, http.StatusUnauthorized)
+
 	// без авторизации → 401
 	doStatus(t, http.MethodPost, srv.URL+"/api/v1/incidents", "",
 		jsonBody(map[string]any{"status_page_id": page.ID, "title": "x", "status": "investigating", "impact": "minor", "body": "b"}),
 		http.StatusUnauthorized)
+}
+
+func containsIncidentID(items []incidentResponse, id string) bool {
+	for _, it := range items {
+		if it.ID == id {
+			return true
+		}
+	}
+	return false
 }

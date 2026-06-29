@@ -165,8 +165,37 @@ func TestMaintenancesIntegration(t *testing.T) {
 	}
 	doStatus(t, http.MethodDelete, srv.URL+"/api/v1/maintenances/"+mnt2.ID, token, nil, http.StatusNotFound)
 
+	// ── админские read-эндпоинты ──
+	var adminList maintenanceListResponse
+	doJSON(t, srv.URL+"/api/v1/maintenances?status_page_id="+page.ID, token, nil, http.StatusOK, &adminList)
+	if !containsMaintenanceID(adminList.Items, mnt.ID) {
+		t.Fatalf("admin maintenance list must include mnt")
+	}
+	doJSON(t, srv.URL+"/api/v1/maintenances?status_page_id="+page.ID+"&status=completed", token, nil, http.StatusOK, &adminList)
+	if !containsMaintenanceID(adminList.Items, mnt.ID) {
+		t.Fatalf("admin filter (status=completed) must include mnt")
+	}
+	var adminMnt maintenanceResponse
+	doJSON(t, srv.URL+"/api/v1/maintenances/"+mnt.ID, token, nil, http.StatusOK, &adminMnt)
+	if adminMnt.ID != mnt.ID {
+		t.Fatalf("admin get maintenance mismatch: %+v", adminMnt)
+	}
+	// изоляция: чужой оператор → 404; без токена → 401
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/maintenances?status_page_id="+page.ID, other, nil, http.StatusNotFound)
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/maintenances/"+mnt.ID, other, nil, http.StatusNotFound)
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/maintenances?status_page_id="+page.ID, "", nil, http.StatusUnauthorized)
+
 	// без авторизации → 401
 	doStatus(t, http.MethodPost, srv.URL+"/api/v1/maintenances", "",
 		jsonBody(map[string]any{"status_page_id": page.ID, "title": "x", "scheduled_start": start, "scheduled_end": end}),
 		http.StatusUnauthorized)
+}
+
+func containsMaintenanceID(items []maintenanceResponse, id string) bool {
+	for _, it := range items {
+		if it.ID == id {
+			return true
+		}
+	}
+	return false
 }

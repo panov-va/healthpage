@@ -80,7 +80,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/components/{id}", s.handlePatchComponent)
 			r.Delete("/components/{id}", s.handleDeleteComponent)
 
+			r.Get("/incidents", s.handleListIncidents)
 			r.Post("/incidents", s.handleCreateIncident)
+			r.Get("/incidents/{id}", s.handleGetIncident)
 			r.Patch("/incidents/{id}", s.handlePatchIncident)
 			r.Delete("/incidents/{id}", s.handleDeleteIncident)
 			r.Post("/incidents/{id}/updates", s.handleAddIncidentUpdate)
@@ -91,7 +93,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/incident-templates/{id}", s.handlePatchIncidentTemplate)
 			r.Delete("/incident-templates/{id}", s.handleDeleteIncidentTemplate)
 
+			r.Get("/maintenances", s.handleListMaintenances)
 			r.Post("/maintenances", s.handleCreateMaintenance)
+			r.Get("/maintenances/{id}", s.handleGetMaintenance)
 			r.Patch("/maintenances/{id}", s.handlePatchMaintenance)
 			r.Delete("/maintenances/{id}", s.handleDeleteMaintenance)
 			r.Post("/maintenances/{id}/updates", s.handleAddMaintenanceUpdate)

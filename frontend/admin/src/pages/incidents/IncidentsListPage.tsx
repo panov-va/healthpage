@@ -40,11 +40,8 @@ export function IncidentsListPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const slug = page?.slug ?? "";
-
   const reloadIncidents = useCallback(() => {
-    if (!slug) return Promise.resolve();
-    return listIncidents(slug, {
+    return listIncidents(id, {
       status: status || undefined,
       impact: impact || undefined,
       componentId: componentId || undefined,
@@ -54,7 +51,7 @@ export function IncidentsListPage() {
       setIncidents(res.items ?? []);
       setTotal(res.pagination?.total ?? 0);
     });
-  }, [slug, status, impact, componentId, pageNum]);
+  }, [id, status, impact, componentId, pageNum]);
 
   useEffect(() => {
     setLoading(true);

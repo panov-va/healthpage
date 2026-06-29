@@ -14,19 +14,21 @@ export interface MaintenanceFilter {
   perPage?: number;
 }
 
-// Листинг идёт через ПУБЛИЧНЫЙ `/pages/{slug}/maintenances` — отдельного админского
-// list-эндпоинта (как и GET одной работы) в контракте нет. Detail собираем из списка.
+// Админский листинг/detail — по status_page_id/id (`GET /maintenances`, `GET /maintenances/{id}`).
 export function listMaintenances(
-  slug: string,
+  statusPageId: string,
   filter: MaintenanceFilter = {},
 ): Promise<MaintenanceList> {
   const q = new URLSearchParams();
+  q.set("status_page_id", statusPageId);
   if (filter.status) q.set("status", filter.status);
   q.set("page", String(filter.page ?? 1));
   q.set("per_page", String(filter.perPage ?? 20));
-  return api.get<MaintenanceList>(
-    `/pages/${encodeURIComponent(slug)}/maintenances?${q.toString()}`,
-  );
+  return api.get<MaintenanceList>(`/maintenances?${q.toString()}`);
+}
+
+export function getMaintenance(id: string): Promise<Maintenance> {
+  return api.get<Maintenance>(`/maintenances/${id}`);
 }
 
 export function createMaintenance(body: MaintenanceCreate): Promise<Maintenance> {

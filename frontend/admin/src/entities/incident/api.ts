@@ -16,21 +16,24 @@ export interface IncidentFilter {
   perPage?: number;
 }
 
-// Листинг и detail идут через ПУБЛИЧНЫЕ эндпоинты `/pages/{slug}/incidents` —
-// отдельного админского list-эндпоинта в контракте нет (см. MEMORY.md, этап 2.9).
-// ⚠️ Следствие: скрытые инциденты (is_visible=false) в этот список не попадают.
-export function listIncidents(slug: string, filter: IncidentFilter = {}): Promise<IncidentList> {
+// Админский листинг и detail — по status_page_id/id (эндпоинты `GET /incidents`,
+// `GET /incidents/{id}`). В отличие от публичной истории, видны и скрытые инциденты.
+export function listIncidents(
+  statusPageId: string,
+  filter: IncidentFilter = {},
+): Promise<IncidentList> {
   const q = new URLSearchParams();
+  q.set("status_page_id", statusPageId);
   if (filter.status) q.set("status", filter.status);
   if (filter.impact) q.set("impact", filter.impact);
   if (filter.componentId) q.set("component_id", filter.componentId);
   q.set("page", String(filter.page ?? 1));
   q.set("per_page", String(filter.perPage ?? 20));
-  return api.get<IncidentList>(`/pages/${encodeURIComponent(slug)}/incidents?${q.toString()}`);
+  return api.get<IncidentList>(`/incidents?${q.toString()}`);
 }
 
-export function getIncident(slug: string, id: string): Promise<Incident> {
-  return api.get<Incident>(`/pages/${encodeURIComponent(slug)}/incidents/${id}`);
+export function getIncident(id: string): Promise<Incident> {
+  return api.get<Incident>(`/incidents/${id}`);
 }
 
 // Создание/изменение/удаление — управляющие (плоские) эндпоинты под JWT.

@@ -95,6 +95,52 @@ type addMaintenanceUpdateRequest struct {
 
 // ── Хендлеры ──
 
+// handleListMaintenances — админский список работ страницы с фильтром по статусу и пагинацией.
+// Требует ?status_page_id; авторизация по владению. Работы не имеют признака видимости, поэтому
+// данные совпадают с публичным списком — переиспользуем тот же store-метод.
+func (s *server) handleListMaintenances(w http.ResponseWriter, r *http.Request) {
+	raw := r.URL.Query().Get("status_page_id")
+	pageID, err := uuid.Parse(raw)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+		return
+	}
+	if _, ok := s.authorizePage(w, r, pageID); !ok {
+		return
+	}
+	statusFilter, ok := parseMaintenanceStatusFilter(w, r)
+	if !ok {
+		return
+	}
+	pageNum, perPage, offset := parsePagination(r)
+	maintenances, total, err := s.store.ListPublicMaintenances(r.Context(), pageID, statusFilter, perPage, offset)
+	if err != nil {
+		writeServerError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, maintenanceListResponse{
+		Items:      toMaintenanceResponses(maintenances),
+		Pagination: paginationResponse{Page: pageNum, PerPage: perPage, Total: total},
+	})
+}
+
+// handleGetMaintenance — админский просмотр одной работы, авторизация по владению.
+func (s *server) handleGetMaintenance(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathUUID(w, r, "id")
+	if !ok {
+		return
+	}
+	m, err := s.store.MaintenanceByID(r.Context(), id)
+	if err != nil {
+		s.writeLoadError(w, err, "работы не найдены")
+		return
+	}
+	if _, ok := s.authorizePage(w, r, m.StatusPageID); !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, toMaintenanceResponse(m))
+}
+
 func (s *server) handleCreateMaintenance(w http.ResponseWriter, r *http.Request) {
 	var req createMaintenanceRequest
 	if !decodeJSON(w, r, &req) {

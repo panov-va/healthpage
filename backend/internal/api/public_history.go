@@ -64,13 +64,9 @@ type maintenanceListResponse struct {
 	Pagination paginationResponse    `json:"pagination"`
 }
 
-// handlePublicIncidents — публичная история инцидентов страницы с фильтрами (status, impact,
-// component_id) и пагинацией. Невалидное значение фильтра → 422.
-func (s *server) handlePublicIncidents(w http.ResponseWriter, r *http.Request) {
-	page, ok := s.loadPublicPage(w, r)
-	if !ok {
-		return
-	}
+// parseIncidentFilter читает фильтры истории инцидентов (status, impact, component_id) из query.
+// Невалидное значение → пишет 422 и возвращает ok=false.
+func parseIncidentFilter(w http.ResponseWriter, r *http.Request) (store.IncidentFilter, bool) {
 	q := r.URL.Query()
 	var filter store.IncidentFilter
 
@@ -78,7 +74,7 @@ func (s *server) handlePublicIncidents(w http.ResponseWriter, r *http.Request) {
 		st := domain.IncidentStatus(raw)
 		if !st.IsValid() {
 			writeError(w, http.StatusUnprocessableEntity, "invalid_request", "недопустимый status")
-			return
+			return filter, false
 		}
 		filter.Status = &st
 	}
@@ -86,7 +82,7 @@ func (s *server) handlePublicIncidents(w http.ResponseWriter, r *http.Request) {
 		im := domain.IncidentImpact(raw)
 		if !im.IsValid() {
 			writeError(w, http.StatusUnprocessableEntity, "invalid_request", "недопустимый impact")
-			return
+			return filter, false
 		}
 		filter.Impact = &im
 	}
@@ -94,9 +90,37 @@ func (s *server) handlePublicIncidents(w http.ResponseWriter, r *http.Request) {
 		cid, err := uuid.Parse(raw)
 		if err != nil {
 			writeError(w, http.StatusUnprocessableEntity, "invalid_request", "некорректный component_id")
-			return
+			return filter, false
 		}
 		filter.ComponentID = &cid
+	}
+	return filter, true
+}
+
+// parseMaintenanceStatusFilter читает опциональный фильтр по статусу работ. Невалидное → 422.
+func parseMaintenanceStatusFilter(w http.ResponseWriter, r *http.Request) (*domain.MaintenanceStatus, bool) {
+	raw := r.URL.Query().Get("status")
+	if raw == "" {
+		return nil, true
+	}
+	st := domain.MaintenanceStatus(raw)
+	if !st.IsValid() {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "недопустимый status")
+		return nil, false
+	}
+	return &st, true
+}
+
+// handlePublicIncidents — публичная история инцидентов страницы с фильтрами (status, impact,
+// component_id) и пагинацией. Невалидное значение фильтра → 422.
+func (s *server) handlePublicIncidents(w http.ResponseWriter, r *http.Request) {
+	page, ok := s.loadPublicPage(w, r)
+	if !ok {
+		return
+	}
+	filter, ok := parseIncidentFilter(w, r)
+	if !ok {
+		return
 	}
 
 	pageNum, perPage, offset := parsePagination(r)
@@ -141,14 +165,9 @@ func (s *server) handlePublicMaintenances(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	var statusFilter *domain.MaintenanceStatus
-	if raw := r.URL.Query().Get("status"); raw != "" {
-		st := domain.MaintenanceStatus(raw)
-		if !st.IsValid() {
-			writeError(w, http.StatusUnprocessableEntity, "invalid_request", "недопустимый status")
-			return
-		}
-		statusFilter = &st
+	statusFilter, ok := parseMaintenanceStatusFilter(w, r)
+	if !ok {
+		return
 	}
 
 	pageNum, perPage, offset := parsePagination(r)

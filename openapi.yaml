@@ -486,6 +486,36 @@ paths:
 
   # ─────────────────────────────── INCIDENTS ─────────────────────────────
   /incidents:
+    get:
+      tags: [Incidents]
+      summary: Список инцидентов (админ — включая скрытые)
+      parameters:
+        - name: status_page_id
+          in: query
+          required: false
+          description: >
+            Страница, чьи инциденты вернуть. Обязателен при операторском JWT; при ApiToken
+            выводится из токена. В отличие от публичной истории, возвращает и скрытые
+            (is_visible=false) инциденты.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/IncidentStatus' }
+        - name: impact
+          in: query
+          schema: { $ref: '#/components/schemas/IncidentImpact' }
+        - name: component_id
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IncidentList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [Incidents]
       summary: Создать инцидент
@@ -504,6 +534,19 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
 
   /incidents/{id}:
+    get:
+      tags: [Incidents]
+      summary: Получить инцидент (админ — включая скрытый)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Incident' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Incidents]
       summary: Изменить инцидент
@@ -637,6 +680,29 @@ paths:
 
   # ───────────────────────────── MAINTENANCES ────────────────────────────
   /maintenances:
+    get:
+      tags: [Maintenances]
+      summary: Список плановых работ (админ)
+      parameters:
+        - name: status_page_id
+          in: query
+          required: false
+          description: >
+            Страница, чьи работы вернуть. Обязателен при операторском JWT; при ApiToken
+            выводится из токена.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MaintenanceStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MaintenanceList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [Maintenances]
       summary: Создать плановые работы
@@ -655,6 +721,19 @@ paths:
         '422': { $ref: '#/components/responses/ValidationError' }
 
   /maintenances/{id}:
+    get:
+      tags: [Maintenances]
+      summary: Получить плановые работы (админ)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Maintenance' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Maintenances]
       summary: Изменить работы (в т.ч. смена статуса scheduled→in_progress→completed)

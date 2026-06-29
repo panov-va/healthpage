@@ -724,6 +724,17 @@ type GetIncidentTemplatesParams struct {
 	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
 }
 
+// GetIncidentsParams defines parameters for GetIncidents.
+type GetIncidentsParams struct {
+	// StatusPageId Страница, чьи инциденты вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. В отличие от публичной истории, возвращает и скрытые (is_visible=false) инциденты.
+	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
+	Status       *IncidentStatus     `form:"status,omitempty" json:"status,omitempty"`
+	Impact       *IncidentImpact     `form:"impact,omitempty" json:"impact,omitempty"`
+	ComponentId  *openapi_types.UUID `form:"component_id,omitempty" json:"component_id,omitempty"`
+	Page         *Page               `form:"page,omitempty" json:"page,omitempty"`
+	PerPage      *PerPage            `form:"per_page,omitempty" json:"per_page,omitempty"`
+}
+
 // PostIntegrationsIntegrationIdGenericJSONBody defines parameters for PostIntegrationsIntegrationIdGeneric.
 type PostIntegrationsIntegrationIdGenericJSONBody map[string]interface{}
 
@@ -735,6 +746,15 @@ type PostIntegrationsIntegrationIdPagerdutyJSONBody map[string]interface{}
 
 // PostIntegrationsIntegrationIdPrometheusJSONBody defines parameters for PostIntegrationsIntegrationIdPrometheus.
 type PostIntegrationsIntegrationIdPrometheusJSONBody map[string]interface{}
+
+// GetMaintenancesParams defines parameters for GetMaintenances.
+type GetMaintenancesParams struct {
+	// StatusPageId Страница, чьи работы вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена.
+	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
+	Status       *MaintenanceStatus  `form:"status,omitempty" json:"status,omitempty"`
+	Page         *Page               `form:"page,omitempty" json:"page,omitempty"`
+	PerPage      *PerPage            `form:"per_page,omitempty" json:"per_page,omitempty"`
+}
 
 // GetPagesSlugIncidentsParams defines parameters for GetPagesSlugIncidents.
 type GetPagesSlugIncidentsParams struct {

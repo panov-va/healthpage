@@ -12,14 +12,14 @@
 
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
-**Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1–3.7 готовы по коду, ждут коммита.
-Этапы 1–2 закоммичены человеком.
-**Следующий шаг:** Этап 3.8 — `worker-max`: MAX Bot API (симметрично worker-telegram), подписка
-через бота, доставка, троттлинг ~30 rps. ⚠️ Зависит от организационной готовности (верификация
-самозанятого + модерация бота — стоп-маркер MAX ниже). Затем 3.9 (slack), 3.10 (управление
-подписчиками в админке). Организационно для 3.7: создать бота у @BotFather → `TELEGRAM_BOT_TOKEN`;
-deep-link `t.me/<bot>?start=<slug>` на публичной странице/в админке (UI — этап 3.10/4).
+**Фаза:** Этапы 0–2 закоммичены человеком; Этап 1 закрыт по коду. Этап 3 (Подписки и уведомления)
+в работе: 3.1–3.7 + 3.9 готовы по коду, ждут коммита. **3.8 (MAX) ОТЛОЖЕН** (после Этапа 7).
+**Следующий шаг:** Этап 3.10 — управление подписчиками в админке (FSD: список/удаление подписчиков
+страницы; страница самоуправления подпиской для клиента). Это закрывает Этап 3 (MVP-каналы:
+email/telegram/slack). Организационно: для 3.7 — бот у @BotFather (`TELEGRAM_BOT_TOKEN`),
+deep-link `t.me/<bot>?start=<slug>`; для 3.9 — Slack App (scope incoming-webhook),
+`SLACK_CLIENT_ID/SECRET`, redirect_uri `<BASE_URL>/api/v1/subscribe/slack/callback`, кнопка
+«Add to Slack» на публичной странице (UI — 3.10/4).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -117,6 +117,50 @@ deep-link `t.me/<bot>?start=<slug>` на публичной странице/в 
   `queue_integration_test.go` (skip без `HEALTHPAGE_TEST_AMQP`): publisher confirm + маршрутизация →
   q.email; Nack(requeue=false) → dead-letter в q.dlq.email; delayed-публикация приходит через ~1s.
   **PASS.** go build/vet/gofmt/golangci-lint зелёные; backend и rabbitmq образы собираются.
+
+**Этап 3.9 — Slack-канал (написано, юнит + интеграционный на PG16 PASS, ждёт коммита):**
+- **Контракт НЕ менялся.** Эндпоинты `GET /pages/{slug}/subscribe/slack/start` и `GET /subscribe/slack/callback`
+  уже в openapi (security[]); enum `slack` уже в SubscriberChannel; `q.slack`+привязки — с 3.2;
+  движок 3.3 уже фанит на slack (IsPush). Подписка — через OAuth, не через POST /subscribe.
+- **Пакет `internal/slack`:**
+  - `oauth.go` — `OAuth`: `AuthorizeURL(state)` (slack.com/oauth/v2/authorize, scope incoming-webhook),
+    `Exchange(ctx, code)→WebhookGrant{WebhookURL,Channel,TeamName}` (POST oauth.v2.access). Опция
+    `WithAccessURL` — тестовый seam (стаб-сервер).
+  - `client.go` — `Client.PostMessage(ctx, webhookURL, payload)`: POST JSON; `PostError` с
+    классификацией (4xx кроме 429 → Permanent; 429 → RetryAfter из Retry-After; 5xx/сеть → транзиент).
+  - `render.go` — `Render(RenderInput)→[]byte`: Slack Block Kit через attachment (color по impact /
+    синий для работ), header+section fields+context-ссылка, i18n RU/EN, `escMrkdwn` (& < >). Свой dict.
+  - `worker.go` — `Worker.Process` (Disposition Ack/Reject/Requeue локальные). Зеркало telegram:
+    идемпотентность по Notification.id (orphan/sent→Ack), пустой address→Reject, рендер, POST.
+    Permanent-ошибка → Ack (дроп — webhook отозван/канал удалён); транзиент → `Retrier.Retry` →
+    delayed-ретрай/DLQ; ошибка MarkSent → Requeue.
+- **API** (`internal/api/slack.go`, публичные): `handleSlackStart` — loadPublicPage (приватная→404),
+  фича-off (slackOAuth=nil)→404, SignSlackState→302 на AuthorizeURL. `handleSlackCallback` —
+  фича-off→404, нет code/state→400, ParseSlackState (битый/истёкший→400)→StatusPageByID→Exchange
+  (ошибка→400)→идемпотентный upsert Subscriber{slack, address=webhook_url, confirmed=true, scope=page}→
+  200 JSON {status,channel}. `Deps.SlackOAuth *slack.OAuth` (nil → выключено), routes в server.go.
+  api main `setupSlackOAuth` (redirect_uri = BASE_URL + /api/v1/subscribe/slack/callback).
+- **subscription** (`token.go`): `SignSlackState(secret, pageID, issuedUnix)` / `ParseSlackState
+  (secret, state, now)` — `<pageID>.<unix>.<HMAC>`, TTL `SlackStateTTL`=1ч (CSRF + привязка к странице,
+  т.к. callback страницы не знает).
+- **cmd/worker-webhook:** потребляет `q.slack` (manual ack, prefetch=16, Process→Ack/Nack), Publisher+
+  Engine как Retrier, `slack.NewClient`. Секреты Slack OAuth НЕ нужны (адрес = сохранённый webhook URL).
+  На 5.4 добавит `q.webhook.out` (исходящие webhook'и). Dockerfile (/app/worker-webhook), compose
+  (сервис worker-webhook; api получил SLACK_CLIENT_ID/SECRET+SUBSCRIPTION_SECRET), .env.example.
+- **config:** `SlackClientID`/`SlackClientSecret` (SLACK_CLIENT_ID/SECRET); пусто → эндпоинты Slack 404.
+- **Флаги (решения агента в рамках §5):** (1) **scope=page** — компонентная подписка Slack не выставлена
+  в openapi-контракте `/start` (только Slug), добавлять с санкции человека (как у telegram). (2) **Дубли:**
+  повторный «Add to Slack» выдаёт НОВЫЙ webhook URL (особенность Slack) → возможен второй подписчик на тот
+  же канал; идемпотентность ловит только тот же URL. (3) callback отвечает JSON (как confirm 3.5);
+  «красивая» HTML-страница/редирект на public-ssr — этап 4 (UX).
+- **Проверено:** юнит — `oauth_test` (AuthorizeURL, Exchange happy/ok:false/без webhook), `client_test`
+  (200 ok, 404→Permanent, 429→RetryAfter, 5xx→транзиент), `render_test` (incident RU+цвет, maintenance
+  EN+цвет, escaping декодированного payload, ошибки), `worker_test` (happy/идемпотент/orphan/empty-addr/
+  транзиент-retry/исчерпание/Permanent-дроп/malformed/unrenderable/mark-sent→requeue),
+  `subscription/token_test` (SlackState round-trip/секрет/TTL/формат). Интеграционные на PG16
+  (`slack_integration_test`, стаб oauth.v2.access): start→302+state → callback создаёт confirmed
+  page-подписчика → повтор идемпотентен → негативы (нет code/битый state→400, неизвестная страница→404) →
+  фича-off → оба эндпоинта 404. **PASS.** build/test/vet/gofmt/golangci-lint зелёные.
 
 **Этап 3.7 — worker-telegram (написано, юнит + интеграционный на PG16 PASS, ждёт коммита):**
 - **Контракт НЕ менялся.** Подписка через бота (DESIGN §3.4), не через `POST /subscribe` (тот email-only).
@@ -941,3 +985,11 @@ _Этап 0 — завершён и закоммичен._
   PG16 PASS; build/test/vet/gofmt/lint зелёные. **Флаг:** подписка через бота только на страницу
   (scope=page); компонентная отложена (deep-link ≤64 симв. не вмещает UUID). Дальше — 3.8 (worker-max,
   симметрично; ⚠️ ждёт оргготовности MAX) → 3.9 (slack) → 3.10 (управление подписчиками в админке).
+- 2026-06-29 — **3.8 (MAX) ОТЛОЖЕН** решением человека (нет оргготовности) → перенесён на после
+  Этапа 7, опционален, из acceptance запуска исключён. Этап 3.9 (Slack-канал): пакет `internal/slack`
+  (OAuth Exchange code→webhook URL; Client.PostMessage с классификацией ошибок; Render Block Kit RU/EN;
+  Worker.Process — зеркало telegram). API slack/start (302+signed state) + slack/callback (Exchange→
+  создать confirmed slack-подписчика). `subscription.Sign/ParseSlackState` (HMAC+TTL). cmd/worker-webhook
+  потребляет q.slack. config SLACK_CLIENT_ID/SECRET (пусто→404). Контракт НЕ менялся (эндпоинты+enum уже
+  в openapi). Юнит + интеграционный на PG16 PASS; build/test/vet/gofmt/lint зелёные. Флаги: scope=page,
+  дубли при повторном Add-to-Slack, callback=JSON. Дальше — 3.10 (управление подписчиками в админке).

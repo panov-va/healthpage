@@ -19,6 +19,7 @@ import (
 	"github.com/healthpage/backend/internal/notify"
 	"github.com/healthpage/backend/internal/queue"
 	"github.com/healthpage/backend/internal/security"
+	"github.com/healthpage/backend/internal/slack"
 	"github.com/healthpage/backend/internal/store"
 )
 
@@ -55,6 +56,9 @@ func main() {
 	notifier, closeQueue := setupNotifier(cfg.RabbitMQURL, st)
 	defer closeQueue()
 
+	// Slack OAuth — опционально: без SLACK_CLIENT_ID/SECRET эндпоинты подписки Slack отвечают 404.
+	slackOAuth := setupSlackOAuth(cfg)
+
 	srv := &http.Server{
 		Addr: ":" + cfg.HTTPPort,
 		Handler: api.NewRouter(api.Deps{
@@ -63,6 +67,7 @@ func main() {
 			Notifier:   notifier,
 			SubSecret:  cfg.SubscriptionSecret,
 			BaseURL:    cfg.BaseURL,
+			SlackOAuth: slackOAuth,
 			Prod:       cfg.IsProd(),
 			RefreshTTL: cfg.RefreshTTL,
 		}),
@@ -115,6 +120,18 @@ func setupNotifier(rabbitURL string, st *store.Store) (*notify.Engine, func()) {
 		_ = pub.Close()
 		_ = conn.Close()
 	}
+}
+
+// setupSlackOAuth собирает OAuth-клиент Slack, если заданы client id/secret. redirect_uri
+// выводится из BASE_URL (должен совпадать с настройкой Slack App). Пусто → nil (фича выключена).
+func setupSlackOAuth(cfg config.Config) *slack.OAuth {
+	if cfg.SlackClientID == "" || cfg.SlackClientSecret == "" {
+		log.Println("slack: SLACK_CLIENT_ID/SECRET не заданы — подписка Slack отключена")
+		return nil
+	}
+	redirectURI := cfg.BaseURL + "/api/v1/subscribe/slack/callback"
+	log.Printf("slack: OAuth подписка включена (redirect_uri=%s)", redirectURI)
+	return slack.NewOAuth(cfg.SlackClientID, cfg.SlackClientSecret, redirectURI, nil)
 }
 
 // runHealthCheck дёргает локальный /healthz и завершает процесс с кодом 0/1.

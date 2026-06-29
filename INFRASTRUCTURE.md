@@ -78,8 +78,8 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 | rabbitmq | Очередь уведомлений/webhook | `rabbitmq` | 5672 / 15672 (UI) | в compose (свой образ: +delayed-плагин) |
 | worker-email | Доставка email (SMTP) | `worker-email` | — | создан (3.4), в compose |
 | worker-telegram | Доставка Telegram + бот подписки | `worker-telegram` | — | создан (3.7), в compose |
-| worker-max | Доставка MAX | `worker-max` | — | не создан |
-| worker-webhook | Slack-подписка + исходящие webhook | `worker-webhook` | — | не создан |
+| worker-max | Доставка MAX | `worker-max` | — | ⏸ отложен (после Этапа 7) |
+| worker-webhook | Доставка Slack (Block Kit) + исходящие webhook | `worker-webhook` | — | создан (3.9, q.slack), в compose |
 | worker-billing | Рекуррентные списания | `worker-billing` | — | не создан |
 | worker-import | Миграция данных | `worker-import` | — | не создан |
 
@@ -127,17 +127,22 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 > сразу). `/stop [<slug>]` — отписка. Один процесс совмещает доставку из `q.telegram` и long-poll
 > бота. MVP: подписка только на всю страницу (scope=page).
 
-### MAX (worker-max)
+### MAX (worker-max) — ⏸ ОТЛОЖЕНО (после Этапа 7)
 | Переменная | Назначение |
 |-----------|-----------|
 | `MAX_BOT_TOKEN` | токен бота MAX (получить после верификации самозанятого + модерации) |
 | `MAX_API_BASE` | домен API MAX (свериться с dev.max.ru на момент реализации) |
 
-### Slack (worker-webhook / OAuth)
+### Slack (worker-webhook / OAuth, этап 3.9)
 | Переменная | Назначение |
 |-----------|-----------|
-| `SLACK_CLIENT_ID` `SLACK_CLIENT_SECRET` | OAuth-приложение «Add to Slack» |
-| `SLACK_SIGNING_SECRET` | проверка подписи (если потребуется) |
+| `SLACK_CLIENT_ID` `SLACK_CLIENT_SECRET` | OAuth-приложение «Add to Slack»; задаются для **api**. Пусто → эндпоинты подписки Slack отвечают 404 |
+
+> redirect_uri Slack App = `<BASE_URL>/api/v1/subscribe/slack/callback` (выводится из BASE_URL).
+> Подписка — через OAuth: «Add to Slack» (`/pages/{slug}/subscribe/slack/start`) → выбор канала →
+> callback сохраняет `Subscriber{channel=slack, address=<incoming-webhook URL>}`. Доставка —
+> `worker-webhook` (потребляет `q.slack`, шлёт Block Kit в этот URL); **секреты OAuth воркеру не
+> нужны**. MVP: подписка на всю страницу (scope=page).
 
 ### Платежи (worker-billing / ЮKassa)
 | Переменная | Назначение |
@@ -157,8 +162,8 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 > Чек-лист внешних ключей. Сами значения — в `.env`, не здесь.
 
 - [ ] **Telegram Bot** — токен через @BotFather.
-- [ ] **MAX Bot** — профиль самозанятого на платформе MAX (верификация через Госуслуги),
-      создание бота, модерация, затем токен. ⚠️ Организационная зависимость, запускать заранее.
+- [ ] **MAX Bot** — ⏸ ОТЛОЖЕНО (разработка 3.8 перенесена на после Этапа 7). Профиль самозанятого
+      на платформе MAX (верификация через Госуслуги), создание бота, модерация, затем токен.
 - [ ] **Slack App** — создать приложение, OAuth scope `incoming-webhook`, прямая ссылка
       «Add to Slack» (без публикации в App Directory для MVP).
 - [ ] **ЮKassa** — подключить как самозанятый (через «Мой налог»), согласовать рекурренты с

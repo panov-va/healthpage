@@ -37,6 +37,12 @@ type Config struct {
 	// TelegramBotToken — токен бота от @BotFather (worker-telegram). Если пуст — воркер не
 	// стартует (бот без токена бессмыслен).
 	TelegramBotToken string
+
+	// Slack OAuth (канал подписки 3.9). Если ClientID/Secret пусты — эндпоинты подписки Slack
+	// отвечают 404 (фича выключена). Доставка (worker-webhook) секретов не требует — шлёт в
+	// сохранённый incoming-webhook URL.
+	SlackClientID     string
+	SlackClientSecret string
 }
 
 // IsProd сообщает, работаем ли в prod-режиме (влияет, напр., на флаг Secure у cookie).
@@ -65,6 +71,9 @@ func Load() Config {
 		SMTPTLS:      env("SMTP_TLS", "") == "true",
 
 		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""),
+
+		SlackClientID:     env("SLACK_CLIENT_ID", ""),
+		SlackClientSecret: env("SLACK_CLIENT_SECRET", ""),
 	}
 	// Дефолт секрета отписки — операторский JWT-секрет (для dev/одно-процессного запуска).
 	if c.SubscriptionSecret == "" {

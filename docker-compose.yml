@@ -61,6 +61,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ACCESS_TTL: ${ACCESS_TTL:-15m}
       REFRESH_TTL: ${REFRESH_TTL:-720h}
+      SUBSCRIPTION_SECRET: ${SUBSCRIPTION_SECRET:-}
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
     ports:
       - "${HTTP_PORT:-8080}:8080"
     depends_on:
@@ -112,6 +115,23 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       RABBITMQ_URL: ${RABBITMQ_URL}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # Воркер HTTP-доставки (этап 3.9): потребляет q.slack, шлёт Block Kit в incoming-webhook URL
+  # канала. Секреты Slack OAuth не нужны (адрес сохранён при подписке). На 5.4 добавит q.webhook.out.
+  worker-webhook:
+    build:
+      context: ./backend
+    entrypoint: ["/app/worker-webhook"]
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      DATABASE_URL: ${DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
     depends_on:
       postgres:
         condition: service_healthy

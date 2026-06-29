@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -37,5 +38,40 @@ func TestUnsubscribeTokenRejectsTampering(t *testing.T) {
 	// Совсем кривой формат.
 	if _, err := ParseUnsubscribeToken(secret, "garbage"); err == nil {
 		t.Error("ожидалась ошибка при отсутствии разделителя")
+	}
+}
+
+func TestSlackStateRoundTrip(t *testing.T) {
+	const secret = "test-secret"
+	pageID := uuid.New()
+	now := time.Unix(1_700_000_000, 0)
+
+	state := SignSlackState(secret, pageID, now.Unix())
+	got, err := ParseSlackState(secret, state, now.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ParseSlackState: %v", err)
+	}
+	if got != pageID {
+		t.Errorf("round-trip page id = %s, want %s", got, pageID)
+	}
+}
+
+func TestSlackStateRejects(t *testing.T) {
+	const secret = "test-secret"
+	pageID := uuid.New()
+	now := time.Unix(1_700_000_000, 0)
+	state := SignSlackState(secret, pageID, now.Unix())
+
+	// Чужой секрет.
+	if _, err := ParseSlackState("other", state, now); err == nil {
+		t.Error("ожидалась ошибка при другом секрете")
+	}
+	// Истёкший state.
+	if _, err := ParseSlackState(secret, state, now.Add(SlackStateTTL+time.Minute)); err == nil {
+		t.Error("ожидалась ошибка при истёкшем state")
+	}
+	// Кривой формат.
+	if _, err := ParseSlackState(secret, "garbage", now); err == nil {
+		t.Error("ожидалась ошибка при кривом формате")
 	}
 }

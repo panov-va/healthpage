@@ -276,15 +276,35 @@
       build/test/vet/gofmt/golangci-lint зелёные. **Флаг: подписка только на страницу (scope=page);**
       компонентная подписка через бота отложена (deep-link payload ≤64 симв. не вмещает UUID
       компонентов — нужен интерактивный выбор inline-кнопками). Ждёт коммита.
-- [ ] **3.8** `worker-max`: MAX Bot API, подписка, доставка; троттлинг ~30 rps.
-      ⚠️ Зависит от организационной готовности (верификация самозанятого + модерация бота).
-- [ ] **3.9** **Slack-канал** (DESIGN §4.4): Slack App, OAuth `/subscribe/slack/start` +
+- [~] **3.8** `worker-max`: MAX Bot API, подписка, доставка; троттлинг ~30 rps.
+      ⏸ **ОТЛОЖЕНО (решение человека, 2026-06-29):** MAX организационно не готов (верификация
+      самозанятого + модерация бота не пройдены). Разработка переносится **на после Этапа 7** —
+      пока опциональна, не блокирует запуск. Реализовать симметрично `worker-telegram`, когда
+      появится токен и пройдёт модерация. Из MVP-acceptance запуска MAX временно исключён.
+- [x] **3.9** **Slack-канал** (DESIGN §4.4): Slack App, OAuth `/subscribe/slack/start` +
       `/subscribe/slack/callback`, сохранение `Subscriber{channel=slack}`, доставка через
       q.slack/worker-webhook в формате Block Kit. Прямая ссылка «Add to Slack» (без Directory).
+      — ✅ Контракт НЕ менялся (оба эндпоинта + enum `slack` уже в openapi; `q.slack` уже в
+      топологии 3.2, движок 3.3 уже фанит на slack). Пакет `internal/slack`: `OAuth` (AuthorizeURL +
+      Exchange code→incoming-webhook URL), `Client.PostMessage` (POST в webhook; 4xx→Permanent,
+      429→RetryAfter, 5xx/сеть→транзиент), `Render` (Block Kit attachment с цветом по impact,
+      RU/EN, экранирование mrkdwn), `Worker.Process` (зеркало telegram: идемпотентность по
+      Notification.id, retry/DLQ, Permanent→дроп). API `slack.go`: `handleSlackStart` (302 на
+      Slack authorize с подписанным state), `handleSlackCallback` (ParseSlackState→Exchange→
+      создать confirmed slack-подписчика). `subscription.SignSlackState`/`ParseSlackState`
+      (HMAC + TTL 1ч, привязка к page). `cmd/worker-webhook` потребляет q.slack. config:
+      `SLACK_CLIENT_ID/SECRET` (пусто → эндпоинты 404). Dockerfile/compose/.env обновлены.
+      Юнит (oauth/client/render/worker) + интеграционные на PG16 (OAuth-флоу со стабом:
+      start 302+state → callback создаёт подписчика, идемпотентность, негативы, фича-off→404).
+      build/test/vet/gofmt/golangci-lint зелёные. **Флаг: scope=page** (как telegram; компонентная
+      подписка не выставлена в openapi-контракте /start — добавить с санкции человека).
+      **Флаг:** повторный «Add to Slack» выдаёт НОВЫЙ webhook URL (особенность Slack) → возможен
+      второй подписчик на тот же канал; дедуп по URL ловит только тот же URL. Ждёт коммита.
 - [ ] **3.10** Управление подписчиками в админке; страница управления подпиской для клиента.
 
 **Acceptance:** подписчик получает уведомление по каждому помеченному обновлению через email,
-Telegram, MAX и Slack; отписка работает; повторная доставка не дублирует; лимита подписчиков нет.
+Telegram и Slack (MAX отложен — см. 3.8); отписка работает; повторная доставка не дублирует;
+лимита подписчиков нет.
 
 ---
 

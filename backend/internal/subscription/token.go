@@ -15,7 +15,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -56,6 +58,48 @@ func ParseUnsubscribeToken(secret, token string) (uuid.UUID, error) {
 	}
 	if !hmac.Equal([]byte(sig), []byte(sign(secret, idStr))) {
 		return uuid.Nil, fmt.Errorf("subscription: invalid unsubscribe token signature")
+	}
+	return id, nil
+}
+
+// SlackStateTTL — срок годности OAuth-state Slack (защита от повторного использования старого
+// state; пользователь обычно проходит OAuth за секунды).
+const SlackStateTTL = time.Hour
+
+// SignSlackState возвращает CSRF-state для Slack OAuth, привязанный к странице:
+// "<pageID>.<issuedUnix>.<base64url(HMAC)>". issuedAt — время выпуска (unix-секунды).
+// State несёт, на какую страницу оформляется подписка (callback страницы не знает) и
+// подтверждает, что OAuth инициировали мы.
+func SignSlackState(secret string, pageID uuid.UUID, issuedAt int64) string {
+	msg := pageID.String() + "." + strconv.FormatInt(issuedAt, 10)
+	return msg + "." + sign(secret, msg)
+}
+
+// ParseSlackState проверяет подпись и срок годности state и возвращает page_id. now — текущее
+// время (для проверки TTL). Подпись сверяется в постоянном времени.
+func ParseSlackState(secret, state string, now time.Time) (uuid.UUID, error) {
+	idStr, rest, ok := strings.Cut(state, ".")
+	if !ok {
+		return uuid.Nil, fmt.Errorf("subscription: malformed slack state")
+	}
+	issuedStr, sig, ok := strings.Cut(rest, ".")
+	if !ok {
+		return uuid.Nil, fmt.Errorf("subscription: malformed slack state")
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("subscription: bad page id in slack state: %w", err)
+	}
+	msg := idStr + "." + issuedStr
+	if !hmac.Equal([]byte(sig), []byte(sign(secret, msg))) {
+		return uuid.Nil, fmt.Errorf("subscription: invalid slack state signature")
+	}
+	issued, err := strconv.ParseInt(issuedStr, 10, 64)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("subscription: bad issued time in slack state: %w", err)
+	}
+	if now.Sub(time.Unix(issued, 0)) > SlackStateTTL {
+		return uuid.Nil, fmt.Errorf("subscription: slack state expired")
 	}
 	return id, nil
 }

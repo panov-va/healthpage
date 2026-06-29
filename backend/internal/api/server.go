@@ -11,6 +11,7 @@ import (
 	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/domain"
 	"github.com/healthpage/backend/internal/notify"
+	"github.com/healthpage/backend/internal/slack"
 	"github.com/healthpage/backend/internal/store"
 )
 
@@ -26,6 +27,7 @@ type Deps struct {
 	Notifier   *notify.Engine // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
 	SubSecret  string         // секрет HMAC-токенов отписки (должен совпадать с worker-email)
 	BaseURL    string         // базовый URL для ссылок в фидах/письмах
+	SlackOAuth *slack.OAuth   // OAuth-клиент Slack; nil — подписка Slack выключена
 	Prod       bool           // влияет на флаг Secure у refresh-cookie
 	RefreshTTL time.Duration  // срок жизни refresh-cookie
 }
@@ -36,13 +38,14 @@ type server struct {
 	notifier   *notify.Engine
 	subSecret  string
 	baseURL    string
+	slackOAuth *slack.OAuth
 	prod       bool
 	refreshTTL time.Duration
 }
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, prod: d.Prod, refreshTTL: d.RefreshTTL}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, prod: d.Prod, refreshTTL: d.RefreshTTL}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -71,6 +74,10 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/pages/{page}/subscribe", s.handleSubscribe)
 		r.Get("/subscribe/confirm", s.handleConfirmSubscribe)
 		r.Get("/unsubscribe", s.handleUnsubscribe)
+
+		// Подписка Slack через OAuth (этап 3.9): публичные.
+		r.Get("/pages/{page}/subscribe/slack/start", s.handleSlackStart)
+		r.Get("/subscribe/slack/callback", s.handleSlackCallback)
 
 		// Публичные фиды (этап 3.6).
 		r.Get("/pages/{page}/rss", s.handleRSS)

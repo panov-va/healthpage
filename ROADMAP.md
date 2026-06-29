@@ -192,7 +192,15 @@
 
 Зависит от: 2. DESIGN §3.5, §4.1, §4.4, §8.1.
 
-- [ ] **3.1** Миграции: `Subscriber` (enum канала incl. `slack`), `Notification` (журнал/идемпотентность).
+- [x] **3.1** Миграции: `Subscriber` (enum канала incl. `slack`), `Notification` (журнал/идемпотентность).
+      — ✅ `00008_subscribers_notifications.sql` (БД→8): `subscribers` (channel/scope/notif-status —
+      TEXT+CHECK, не pg-enum: их нет в нормативном списке §5, как role/visibility/source; нормативные
+      значения = openapi SubscriberChannel/Scope; component_ids uuid[]; confirm_token/unsubscribe_token
+      nullable; без soft-delete — отписка = удаление, как в §5) + `notifications` (event_type, payload
+      jsonb, status pending|sent|failed, attempts, sent_at — журнал для идемпотентности/ретраев §8.1).
+      FK CASCADE (страница→подписчики→уведомления); unique (page,channel,address); partial-unique по
+      токенам; индексы page/subscriber/status; триггеры updated_at. Проверено на PG16: up→v8, схема,
+      CHECK/unique/cascade/trigger (cross-tx), down (чисто) → up. Контракт не менялся. Ждёт коммита.
 - [ ] **3.2** RabbitMQ: exchange'и и очереди по DESIGN §8.1 (notifications topic, q.email,
       q.telegram, q.max, q.slack, DLQ, delayed exchange). Publisher confirms + manual ack.
 - [ ] **3.3** Движок уведомлений: публикация событий (новый инцидент, обновление с notify,

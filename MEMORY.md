@@ -13,12 +13,12 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-**Фаза:** Этап 2 (Инциденты и работы) — **закрыт по коду** (2.1–2.10 + админские read-эндпоинты).
-Задачи 1.1–1.10 + фикс main.go + **2.1–2.10 + админские read-эндпоинты** написаны и проверены,
-ждут коммита человеком.
-**Следующий шаг:** Этап 3 — подписки и уведомления (DESIGN §3.5, §4.1, §4.4, §8.1): миграции
-Subscriber/Notification, RabbitMQ-топология, движок уведомлений, worker'ы (email/telegram/max/slack),
-RSS/iCal, double opt-in. Начать с 3.1 (миграции Subscriber+Notification).
+**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1 (миграции) готово. Этапы 1–2 закоммичены
+человеком (по его словам — коммит на каждом этапе; в т.ч. админские read-эндпоинты и 2.10 в git).
+**Следующий шаг:** Этап 3.2 — RabbitMQ-топология (DESIGN §8.1): exchange `notifications` (topic),
+очереди `q.email`/`q.telegram`/`q.max`/`q.slack`, DLQ `q.dlq.<channel>`, delayed exchange (плагин!),
+publisher confirms + manual ack. ⚠️ delayed-exchange плагин в образ rabbitmq ещё не добавлен (TODO).
+Затем 3.3 (движок уведомлений: публикация событий, идемпотентность по Notification.id, ретраи/backoff).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -93,6 +93,29 @@ RSS/iCal, double opt-in. Начать с 3.1 (миграции Subscriber+Notifi
 ---
 
 ## Что в работе
+
+**Этап 3.1 — миграции подписчиков/уведомлений (написано и проверено на PG16, ждёт коммита):**
+- `backend/migrations/00008_subscribers_notifications.sql`. Версия БД → **8**.
+- **Решение по типам (агентское, в рамках §5):** `channel` (email|telegram|rss|ical|webhook|max|slack),
+  `scope` (page|components), `notifications.status` (pending|sent|failed) — **TEXT + CHECK**, НЕ pg-enum:
+  их нет в нормативном списке enum'ов DESIGN §5 (как role/visibility/source в 00003/00004). Нормативные
+  значения совпадают с openapi `SubscriberChannel`/`SubscriberScope`. Нормативные §5-enum'ы остаются
+  pg-типами (component_status, incident_*, maintenance_status).
+- `subscribers`: status_page_id (FK CASCADE), channel, address, confirmed (default false), confirm_token,
+  unsubscribe_token (оба nullable; по §9 хранить ХЭШ — генерация/хэширование в сервисе на 3.4/3.5),
+  scope (default 'page'), component_ids uuid[] (default '{}'), created_at/updated_at. **Без soft-delete**
+  (в §5 у Subscriber нет deleted_at — отписка = физическое удаление). Индексы: unique
+  (status_page_id, channel, address) — идемпотентность повторной подписки; partial-unique по
+  confirm_token и unsubscribe_token; idx по status_page_id.
+- `notifications`: subscriber_id (FK CASCADE), event_type, payload jsonb (default '{}'), status
+  (default 'pending'), attempts int (default 0), sent_at nullable, created_at/updated_at. Журнал для
+  идемпотентности/ретраев (§8.1). Индексы: subscriber_id, status (воркер выбирает pending). **dedup-ключ
+  отдельной колонкой НЕ заводил** — §5 его не предусматривает; если 3.3 потребует, добавить тогда.
+- Триггеры `set_updated_at` на обеих таблицах (общая функция из 00002).
+- **Проверено на живом PG16:** up→v8; колонки/индексы/CHECK соответствуют; функционально — bad channel/
+  scope/status → check_violation, дубль (page,channel,address) → unique_violation, дефолты
+  pending/0, updated_at-триггер растёт между транзакциями, FK-каскад страница→подписчик→уведомление;
+  down (таблицы исчезают без остатка) → up снова. Контракт/домен/store не трогал — это только миграция.
 
 **Этап 2.10 — публичный SSR: вкладки Инциденты/Работы + детальные страницы (написано, `next build` зелёный, e2e на живом стеке PASS, ждёт коммита):**
 - **Контракт НЕ менялся** — используются публичные эндпоинты 2.8 (`/pages/{slug}/incidents`,
@@ -704,3 +727,9 @@ _Этап 0 — завершён и закоммичен._
   Контракт не менялся (эндпоинты 2.8). `next build` зелёный, e2e на живом стеке PASS (RU/EN, постмортем,
   404). **Этап 2 закрыт по коду.** Дальше — этап 3 (подписки/уведомления), начать с 3.1 (миграции
   Subscriber+Notification).
+- 2026-06-29 — Этап 3.1 (миграции подписок): `00008_subscribers_notifications.sql` (БД→8) — `subscribers`
+  (channel/scope TEXT+CHECK, component_ids uuid[], confirm/unsubscribe-токены, без soft-delete) +
+  `notifications` (event_type/payload/status/attempts — журнал идемпотентности §8.1). FK CASCADE, unique
+  (page,channel,address), partial-unique по токенам, индексы, триггеры updated_at. Проверено на PG16
+  (up/схема/CHECK/unique/cascade/trigger/down→up). Контракт не менялся. Дальше — 3.2 (RabbitMQ-топология;
+  ⚠️ нужен delayed-exchange плагин в образе).

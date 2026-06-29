@@ -106,6 +106,16 @@ func (s *Store) UpdateStatusPage(ctx context.Context, p domain.StatusPage) (doma
 	return mapStatusPage(updated), nil
 }
 
+// SetStatusPagePassword задаёт хэш пароля приватной страницы (этап 4.2); nil снимает пароль.
+func (s *Store) SetStatusPagePassword(ctx context.Context, id uuid.UUID, passwordHash *string) error {
+	if err := s.q.SetStatusPagePassword(ctx, db.SetStatusPagePasswordParams{
+		ID: id, PasswordHash: passwordHash,
+	}); err != nil {
+		return fmt.Errorf("store: set page password: %w", err)
+	}
+	return nil
+}
+
 // SoftDeleteStatusPage помечает страницу удалённой.
 func (s *Store) SoftDeleteStatusPage(ctx context.Context, id uuid.UUID) error {
 	if err := s.q.SoftDeleteStatusPage(ctx, id); err != nil {

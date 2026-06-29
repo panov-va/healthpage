@@ -66,6 +66,48 @@ func ParseUnsubscribeToken(secret, token string) (uuid.UUID, error) {
 // state; пользователь обычно проходит OAuth за секунды).
 const SlackStateTTL = time.Hour
 
+// PageAccessTTL — срок годности токена доступа к приватной странице (этап 4.2). По истечении
+// посетитель вводит пароль заново.
+const PageAccessTTL = 7 * 24 * time.Hour
+
+// PageAccessToken возвращает токен доступа к приватной странице, привязанный к page_id и
+// абсолютному времени истечения: "<pageID>.<expiresUnix>.<base64url(HMAC)>". Выдаётся после
+// проверки пароля; передаётся посетителем в заголовке X-Page-Access. expiresAt — момент
+// истечения (unix-секунды).
+func PageAccessToken(secret string, pageID uuid.UUID, expiresAt int64) string {
+	msg := pageID.String() + "." + strconv.FormatInt(expiresAt, 10)
+	return msg + "." + sign(secret, msg)
+}
+
+// ParsePageAccessToken проверяет подпись и срок годности токена доступа и возвращает page_id.
+// now — текущее время (для проверки истечения). Подпись сверяется в постоянном времени.
+func ParsePageAccessToken(secret, token string, now time.Time) (uuid.UUID, error) {
+	idStr, rest, ok := strings.Cut(token, ".")
+	if !ok {
+		return uuid.Nil, fmt.Errorf("subscription: malformed page access token")
+	}
+	expStr, sig, ok := strings.Cut(rest, ".")
+	if !ok {
+		return uuid.Nil, fmt.Errorf("subscription: malformed page access token")
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("subscription: bad page id in access token: %w", err)
+	}
+	msg := idStr + "." + expStr
+	if !hmac.Equal([]byte(sig), []byte(sign(secret, msg))) {
+		return uuid.Nil, fmt.Errorf("subscription: invalid page access token signature")
+	}
+	exp, err := strconv.ParseInt(expStr, 10, 64)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("subscription: bad expiry in access token: %w", err)
+	}
+	if now.After(time.Unix(exp, 0)) {
+		return uuid.Nil, fmt.Errorf("subscription: page access token expired")
+	}
+	return id, nil
+}
+
 // SignSlackState возвращает CSRF-state для Slack OAuth, привязанный к странице:
 // "<pageID>.<issuedUnix>.<base64url(HMAC)>". issuedAt — время выпуска (unix-секунды).
 // State несёт, на какую страницу оформляется подписка (callback страницы не знает) и

@@ -4,7 +4,10 @@
 
 import type { Metadata } from "next";
 
-import { fetchPageMeta, PageNotFoundError } from "./api";
+import { fetchPageMeta, PageAccessRequiredError, PageNotFoundError } from "./api";
+
+// noindex для приватных страниц (DESIGN §3.1: приватная не индексируется).
+const NOINDEX: Metadata = { robots: { index: false, follow: false } };
 
 export async function buildStatusMetadata(slug: string): Promise<Metadata> {
   try {
@@ -13,8 +16,15 @@ export async function buildStatusMetadata(slug: string): Promise<Metadata> {
     if (page.favicon_url) {
       meta.icons = { icon: page.favicon_url };
     }
+    if (page.visibility === "private") {
+      meta.robots = NOINDEX.robots;
+    }
     return meta;
   } catch (err) {
+    if (err instanceof PageAccessRequiredError) {
+      // Приватная страница за паролем — не индексируем (имя/брендинг недоступны без доступа).
+      return NOINDEX;
+    }
     if (err instanceof PageNotFoundError) {
       return {};
     }

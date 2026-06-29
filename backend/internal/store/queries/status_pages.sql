@@ -29,5 +29,10 @@ UPDATE status_pages SET
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING *;
 
+-- name: SetStatusPagePassword :exec
+-- Задаёт/снимает пароль приватной страницы (этап 4.2). NULL снимает пароль.
+-- Хранится только хэш (§9). UpdateStatusPage намеренно password_hash не трогает.
+UPDATE status_pages SET password_hash = $2 WHERE id = $1 AND deleted_at IS NULL;
+
 -- name: SoftDeleteStatusPage :exec
 UPDATE status_pages SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL;

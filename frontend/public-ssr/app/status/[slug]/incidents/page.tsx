@@ -2,13 +2,18 @@
 // Источник: GET /pages/{slug}/incidents (видимые, не удалённые; фильтры/пагинация — 2.8).
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { Badge } from "../Badge";
 import { PageShell } from "../PageShell";
 import { Pager } from "../Pager";
 import { StatusTabs } from "../StatusTabs";
-import { fetchIncidents, fetchPageMeta, PageNotFoundError } from "../../../../lib/api";
+import {
+  fetchIncidents,
+  fetchPageMeta,
+  PageAccessRequiredError,
+  PageNotFoundError,
+} from "../../../../lib/api";
 import { impactColor, incidentStatusColor } from "../../../../lib/badge";
 import { buildStatusMetadata } from "../../../../lib/meta";
 import { is12h, parseTheme } from "../../../../lib/theme";
@@ -47,6 +52,9 @@ export default async function IncidentsPage({ params, searchParams }: PageProps)
       fetchPageMeta(slug),
     ]);
   } catch (err) {
+    if (err instanceof PageAccessRequiredError) {
+      redirect(withLang(`/status/${encodeURIComponent(slug)}`, locale));
+    }
     if (err instanceof PageNotFoundError) {
       notFound();
     }

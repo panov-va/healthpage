@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/healthpage/backend/internal/domain"
+	"github.com/healthpage/backend/internal/security"
 	"github.com/healthpage/backend/internal/store"
 )
 
@@ -56,11 +57,14 @@ type createPageRequest struct {
 }
 
 type patchPageRequest struct {
-	Name          *string         `json:"name"`
-	Description   *string         `json:"description"`
-	Timezone      *string         `json:"timezone"`
-	DefaultLocale *string         `json:"default_locale"`
-	Visibility    *string         `json:"visibility"`
+	Name          *string `json:"name"`
+	Description   *string `json:"description"`
+	Timezone      *string `json:"timezone"`
+	DefaultLocale *string `json:"default_locale"`
+	Visibility    *string `json:"visibility"`
+	// Пароль приватной страницы (этап 4.2). Отсутствует → не трогаем; null или "" → снять;
+	// непустая строка → задать/сменить. RawMessage, чтобы отличить отсутствие от null.
+	Password      json.RawMessage `json:"password"`
 	Theme         json.RawMessage `json:"theme"`
 	LogoURL       *string         `json:"logo_url"`
 	FaviconURL    *string         `json:"favicon_url"`
@@ -196,7 +200,42 @@ func (s *server) handlePatchPage(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, err)
 		return
 	}
+
+	// Пароль приватной страницы (этап 4.2) — отдельная колонка (хранится хэш, §9), не в Update.
+	if req.Password != nil {
+		hash, ok := hashPagePassword(w, req.Password)
+		if !ok {
+			return
+		}
+		if err := s.store.SetStatusPagePassword(r.Context(), updated.ID, hash); err != nil {
+			writeServerError(w, err)
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, toStatusPageResponse(updated))
+}
+
+// hashPagePassword разбирает поле password из PATCH: JSON null или пустая строка → снять
+// пароль (nil); непустая строка → argon2id-хэш. Возвращает (хэш|nil, ok); при ошибке пишет 422.
+func hashPagePassword(w http.ResponseWriter, raw json.RawMessage) (*string, bool) {
+	if string(raw) == "null" {
+		return nil, true
+	}
+	var pw string
+	if err := json.Unmarshal(raw, &pw); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "password должен быть строкой или null")
+		return nil, false
+	}
+	if pw == "" {
+		return nil, true
+	}
+	hash, err := security.HashPassword(pw)
+	if err != nil {
+		writeServerError(w, err)
+		return nil, false
+	}
+	return &hash, true
 }
 
 func (s *server) handleDeletePage(w http.ResponseWriter, r *http.Request) {

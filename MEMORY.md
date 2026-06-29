@@ -14,11 +14,14 @@
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этапы 0–2 закоммичены человеком; Этап 1 закрыт по коду. **Этап 3 (Подписки и уведомления)
 ЗАКРЫТ ПО КОДУ** (3.1–3.7, 3.9, 3.10 готовы, ждут коммита). **3.8 (MAX) ОТЛОЖЕН** (после Этапа 7).
-**Этап 4 (Кастомизация) — В РАБОТЕ: 4.1 ГОТОВ ПО КОДУ** (тема/тёмный режим/логотип/favicon/таймзона+
-формат времени; ждёт коммита — детали ниже в «Что в работе»). **Следующий шаг:** 4.2 — приватные
-страницы (пароль / список email) + приватные компоненты + noindex (DESIGN §3.2, §3.6).
+**Этап 4 (Кастомизация) — В РАБОТЕ: 4.1 и 4.2 ГОТОВЫ ПО КОДУ** (4.1 тема/тёмный режим/логотип/
+favicon/таймзона; 4.2 приватные страницы по паролю + noindex; обе ждут коммита — детали ниже в
+«Что в работе»). **Следующий шаг:** 4.3 — собственный домен (CNAME-верификация + ACME TLS).
+4.2.1 (приватность по списку email + magic-link) — отложена, отдельная задача.
 Организационно осталось: для 3.7 — `TELEGRAM_BOT_TOKEN` у @BotFather; для 3.9 — Slack App +
 `SLACK_CLIENT_ID/SECRET`, redirect_uri `<BASE_URL>/api/v1/subscribe/slack/callback`.
+**Прод:** `SUBSCRIPTION_SECRET` api ↔ воркеры должны совпадать (теперь им же подписываются токены
+доступа к приватным страницам 4.2).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -93,6 +96,48 @@
 ---
 
 ## Что в работе
+
+**Этап 4.2 — приватные страницы по паролю + noindex (написано, build+test+живой e2e PASS, ждёт коммита):**
+- **Решения человека:** (1) объём — **только пароль**; список email отложен в 4.2.1 (нужна таблица
+  allowed_emails + magic-link флоу). (2) Механизм — **подписанная HttpOnly-cookie**.
+- **Контракт расширен с санкции человека:** `POST /pages/{slug}/access` (PageAccessRequest{password}→
+  PageAccessResult{access_token,expires_in}); `StatusPageUpdate.password` (write-only: строка задаёт,
+  null/"" снимает); `PublicPage.visibility` (для noindex); параметр-заголовок `X-Page-Access` +
+  ответ `PasswordRequired` (401) добавлены к публичным read (summary/components/incidents/incidents/{id}/
+  maintenances/rss/calendar.ics/uptime). Типы перегенерированы (TS+Go), openapi провалиден.
+- **Backend:** `subscription.PageAccessToken/ParsePageAccessToken` (`<pageID>.<expUnix>.<HMAC>`, TTL
+  `PageAccessTTL`=7д, секрет = `subSecret`/SUBSCRIPTION_SECRET). sqlc `SetStatusPagePassword` +
+  store-метод (хранит хэш, §9). API: `handlePageAccess` (page_access.go — verify argon2id
+  `security.VerifyPassword`→ токен; не приватная → 404; неверный/без пароля → 401), `handlePatchPage`
+  принимает `password` (RawMessage: отсутствие≠null; `hashPagePassword` хэширует/снимает),
+  `loadPublicPage` для приватной требует валидный `X-Page-Access` (иначе 401 password_required),
+  `publicPageResponse.visibility`. Маршрут `POST /pages/{page}/access` в публичной группе.
+  **Приватные компоненты НЕ трогал** — уже исключаются из вывода (summary.go) и из общего/группового
+  статуса (`Component.CountsTowardStatus` = !private && display_state). Юнит `token_test`
+  (PageAccessToken round-trip/секрет/TTL/формат) + интеграционный `page_access_integration_test`
+  на PG16 (public→/access 404; private без токена→401; неверный пароль→401; верный→токен;
+  X-Page-Access→200+visibility=private; битый токен→401; снять пароль→/access снова 401).
+- **public-ssr:** `lib/api` — `pageAccessHeaders(slug)` читает cookie `hp_access_<slug>` (next/headers
+  `cookies()`) и форвардит как `X-Page-Access` во все slug-запросы; `getJSON` 401→`PageAccessRequiredError`;
+  `PublicPage.visibility`. Гейт: `AccessGate` (нативная форма POST, без клиентского JS) + route handler
+  `app/status/[slug]/access/route.ts` (POST→backend /access; успех→Set-Cookie HttpOnly hp_access_<slug>
+  + 303 на страницу; неверный→303 `?access_error=1`). Главная статус-страница при 401 рендерит
+  `AccessGate` (показывает ошибку по `access_error`); подстраницы (incidents/detail/maintenances) при
+  401 `redirect` на главную (где гейт). `noindex` для приватных (visibility=private или 401) через
+  `buildStatusMetadata` (lib/meta). CSS `.gate*`.
+- **Admin:** `SettingsForm` — Select видимости (public/private) + поле пароля (показывается для private:
+  ввод задаёт новый, чекбокс «снять пароль»→null, пусто→не менять) через PATCH `/pages/{id}`.
+- **Решения/флаги:** (1) приватная страница отдаёт 401 (а не 404) — раскрывает существование, но это
+  нужно для гейта (DESIGN хочет ввод пароля, не скрытие). (2) cookie ставит **public-ssr** (origin
+  посетителя), а backend минтит/проверяет токен — корректно для кросс-origin SSR (вариант
+  «Set-Cookie из API» не работает cross-origin). (3) RSS/iCal приватной страницы тоже гейтятся
+  (фид-ридер без токена → 401) — для приватных фид через токен в URL не делал (out of scope MVP).
+  (4) На гейте локаль ru по умолчанию (форма несёт lang). (5) список email — 4.2.1.
+- **Проверено:** go build/test(+интеграц.)/vet/gofmt/golangci-lint; admin `npm run build`; public-ssr
+  `next build` — зелёные. **Живой e2e** (api :8081 + next start): без cookie→гейт(200)+noindex;
+  неверный пароль→303 access_error=1 (текст ошибки на гейте); верный→303+Set-Cookie hp_access_<slug>;
+  с cookie→статус-страница (brand «Secret Co», overall, noindex сохраняется); публичная страница не
+  гейтится и индексируется.
 
 **Этап 4.1 — тема/брендинг/таймзона (написано, build+test+живой e2e PASS, ждёт коммита):**
 - **Контракт расширен с санкции человека:** новая схема `PublicPage` (публично-безопасное

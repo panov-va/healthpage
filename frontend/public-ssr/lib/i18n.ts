@@ -46,6 +46,15 @@ interface Dict {
   openIncident: string;
   prevPage: string;
   nextPage: string;
+
+  // Парольный гейт приватной страницы (этап 4.2).
+  access: {
+    title: string;
+    prompt: string;
+    passwordLabel: string;
+    submit: string;
+    error: string;
+  };
 }
 
 const ru: Dict = {
@@ -101,6 +110,13 @@ const ru: Dict = {
   openIncident: "Подробнее",
   prevPage: "← Новее",
   nextPage: "Старее →",
+  access: {
+    title: "Приватная страница",
+    prompt: "Эта страница статуса защищена. Введите пароль для доступа.",
+    passwordLabel: "Пароль",
+    submit: "Войти",
+    error: "Неверный пароль. Попробуйте ещё раз.",
+  },
 };
 
 const en: Dict = {
@@ -156,6 +172,13 @@ const en: Dict = {
   openIncident: "Details",
   prevPage: "← Newer",
   nextPage: "Older →",
+  access: {
+    title: "Private page",
+    prompt: "This status page is protected. Enter the password to continue.",
+    passwordLabel: "Password",
+    submit: "Enter",
+    error: "Wrong password. Please try again.",
+  },
 };
 
 const dicts: Record<Locale, Dict> = { ru, en };

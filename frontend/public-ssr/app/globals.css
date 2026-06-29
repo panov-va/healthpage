@@ -66,6 +66,59 @@
   color: var(--text);
 }
 
+/* ── Парольный гейт приватной страницы (этап 4.2) ── */
+.gate {
+  max-width: 420px;
+  margin: 48px auto 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 28px 24px;
+}
+.gate h1 {
+  margin: 0 0 8px;
+  font-size: 1.3rem;
+}
+.gate-prompt {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.gate-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.gate-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+}
+.gate-error {
+  margin-top: 10px;
+  color: var(--st-major_outage);
+  font-size: 0.9rem;
+}
+.gate-submit {
+  margin-top: 16px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.gate-submit:hover {
+  opacity: 0.92;
+}
+
 * {
   box-sizing: border-box;
 }

@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/healthpage/backend/internal/domain"
 	"github.com/healthpage/backend/internal/store"
+	"github.com/healthpage/backend/internal/subscription"
 )
 
 // ── Публичные DTO сводки ──
@@ -31,6 +33,7 @@ type publicPageResponse struct {
 	Slug          string          `json:"slug"`
 	Timezone      string          `json:"timezone"`
 	DefaultLocale string          `json:"default_locale"`
+	Visibility    string          `json:"visibility"`
 	Theme         json.RawMessage `json:"theme"`
 	LogoURL       *string         `json:"logo_url"`
 	FaviconURL    *string         `json:"favicon_url"`
@@ -48,6 +51,7 @@ func toPublicPageResponse(p domain.StatusPage) publicPageResponse {
 		Slug:          p.Slug,
 		Timezone:      p.Timezone,
 		DefaultLocale: p.DefaultLocale,
+		Visibility:    string(p.Visibility),
 		Theme:         json.RawMessage(theme),
 		LogoURL:       p.LogoURL,
 		FaviconURL:    p.FaviconURL,
@@ -65,8 +69,10 @@ type pageSummaryResponse struct {
 	ActiveMaintenances  []maintenanceResponse `json:"active_maintenances"`
 }
 
-// loadPublicPage загружает публичную страницу по slug. Приватные страницы недоступны анонимно
-// (доступ по паролю/email — этап 4), поэтому скрываются как 404. Возвращает false, если ответ уже записан.
+// loadPublicPage загружает страницу по slug для публичных read-эндпоинтов. Приватная страница
+// (этап 4.2) требует валидного токена доступа в заголовке X-Page-Access (получен через
+// POST /pages/{slug}/access по паролю); без него — 401 password_required (страница существует,
+// но закрыта). Возвращает false, если ответ уже записан.
 func (s *server) loadPublicPage(w http.ResponseWriter, r *http.Request) (domain.StatusPage, bool) {
 	slug := chi.URLParam(r, "page")
 	page, err := s.store.StatusPageBySlug(r.Context(), slug)
@@ -78,11 +84,22 @@ func (s *server) loadPublicPage(w http.ResponseWriter, r *http.Request) (domain.
 		}
 		return domain.StatusPage{}, false
 	}
-	if page.IsPrivate() {
-		writeError(w, http.StatusNotFound, "not_found", "страница не найдена")
+	if page.IsPrivate() && !s.hasPageAccess(r, page.ID) {
+		writeError(w, http.StatusUnauthorized, "password_required", "страница защищена паролем")
 		return domain.StatusPage{}, false
 	}
 	return page, true
+}
+
+// hasPageAccess проверяет токен доступа к приватной странице из заголовка X-Page-Access
+// (этап 4.2): валидная HMAC-подпись, не истёк и привязан к этой странице.
+func (s *server) hasPageAccess(r *http.Request, pageID uuid.UUID) bool {
+	token := r.Header.Get("X-Page-Access")
+	if token == "" {
+		return false
+	}
+	id, err := subscription.ParsePageAccessToken(s.subSecret, token, time.Now())
+	return err == nil && id == pageID
 }
 
 func (s *server) handlePublicSummary(w http.ResponseWriter, r *http.Request) {

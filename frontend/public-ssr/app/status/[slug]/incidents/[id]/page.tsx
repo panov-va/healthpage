@@ -3,7 +3,7 @@
 // из публичного списка компонентов.
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { Badge } from "../../Badge";
 import { PageShell } from "../../PageShell";
@@ -13,6 +13,7 @@ import {
   fetchComponents,
   fetchIncident,
   fetchPageMeta,
+  PageAccessRequiredError,
   PageNotFoundError,
 } from "../../../../../lib/api";
 import { impactColor, incidentStatusColor } from "../../../../../lib/badge";
@@ -49,6 +50,9 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
     names = componentNameMap(comps);
     meta = m;
   } catch (err) {
+    if (err instanceof PageAccessRequiredError) {
+      redirect(withLang(`/status/${encodeURIComponent(slug)}`, locale));
+    }
     if (err instanceof PageNotFoundError) {
       notFound();
     }

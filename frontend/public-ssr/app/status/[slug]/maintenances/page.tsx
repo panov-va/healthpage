@@ -3,7 +3,7 @@
 // нет, а список отдаёт работы полными (компоненты + хроника) — поэтому детали показываем прямо
 // в карточке. Имена компонентов — из публичного списка компонентов.
 
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { Badge } from "../Badge";
 import { PageShell } from "../PageShell";
@@ -14,12 +14,13 @@ import {
   fetchComponents,
   fetchMaintenances,
   fetchPageMeta,
+  PageAccessRequiredError,
   PageNotFoundError,
 } from "../../../../lib/api";
 import { maintenanceStatusColor } from "../../../../lib/badge";
 import { buildStatusMetadata } from "../../../../lib/meta";
 import { is12h, parseTheme } from "../../../../lib/theme";
-import { dict, formatInZone, resolveLocale } from "../../../../lib/i18n";
+import { dict, formatInZone, resolveLocale, withLang } from "../../../../lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,9 @@ export default async function MaintenancesPage({ params, searchParams }: PagePro
     names = componentNameMap(comps);
     meta = m;
   } catch (err) {
+    if (err instanceof PageAccessRequiredError) {
+      redirect(withLang(`/status/${encodeURIComponent(slug)}`, locale));
+    }
     if (err instanceof PageNotFoundError) {
       notFound();
     }

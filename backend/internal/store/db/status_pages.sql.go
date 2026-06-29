@@ -178,6 +178,22 @@ func (q *Queries) ListStatusPagesByAccount(ctx context.Context, accountID uuid.U
 	return items, nil
 }
 
+const setStatusPagePassword = `-- name: SetStatusPagePassword :exec
+UPDATE status_pages SET password_hash = $2 WHERE id = $1 AND deleted_at IS NULL
+`
+
+type SetStatusPagePasswordParams struct {
+	ID           uuid.UUID
+	PasswordHash *string
+}
+
+// Задаёт/снимает пароль приватной страницы (этап 4.2). NULL снимает пароль.
+// Хранится только хэш (§9). UpdateStatusPage намеренно password_hash не трогает.
+func (q *Queries) SetStatusPagePassword(ctx context.Context, arg SetStatusPagePasswordParams) error {
+	_, err := q.db.Exec(ctx, setStatusPagePassword, arg.ID, arg.PasswordHash)
+	return err
+}
+
 const softDeleteStatusPage = `-- name: SoftDeleteStatusPage :exec
 UPDATE status_pages SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
 `

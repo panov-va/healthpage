@@ -50,6 +50,11 @@ export function SettingsForm({
   const initial = readTheme(page.theme);
   const [name, setName] = useState(page.name);
   const [description, setDescription] = useState(page.description ?? "");
+  const [visibility, setVisibility] = useState<"public" | "private">(
+    page.visibility === "private" ? "private" : "public",
+  );
+  const [password, setPassword] = useState("");
+  const [clearPassword, setClearPassword] = useState(false);
   const [timezone, setTimezone] = useState(page.timezone ?? "UTC");
   const [locale, setLocale] = useState(page.default_locale ?? "ru");
   const [color, setColor] = useState(initial.color);
@@ -69,16 +74,27 @@ export function SettingsForm({
     setError(null);
     setSaved(false);
     try {
-      const updated = await updatePage(page.id, {
+      const body: Parameters<typeof updatePage>[1] = {
         name,
         description,
+        visibility,
         timezone,
         default_locale: locale,
         theme: { primary_color: color, mode, time_format: timeFormat },
         logo_url: logoUrl.trim() || null,
         favicon_url: faviconUrl.trim() || null,
-      });
+      };
+      // Пароль: задаём только при непустом вводе; снимаем при отметке «снять» (null).
+      // Пустой ввод без отметки — не трогаем (текущий пароль нельзя прочитать).
+      if (clearPassword) {
+        body.password = null;
+      } else if (password.trim()) {
+        body.password = password;
+      }
+      const updated = await updatePage(page.id, body);
       onSaved(updated);
+      setPassword("");
+      setClearPassword(false);
       setSaved(true);
     } catch (err) {
       setError(err instanceof HttpError ? err.message : "Не удалось сохранить настройки");
@@ -101,6 +117,44 @@ export function SettingsForm({
         />
       </Field>
 
+      <h3 style={{ margin: "16px 0 8px" }}>Доступ</h3>
+      <Field label="Видимость">
+        <Select
+          value={visibility}
+          onChange={(e) => setVisibility(e.target.value === "private" ? "private" : "public")}
+        >
+          <option value="public">Публичная</option>
+          <option value="private">Приватная (по паролю)</option>
+        </Select>
+      </Field>
+      {visibility === "private" ? (
+        <>
+          <Field label="Пароль страницы">
+            <Input
+              type="password"
+              autoComplete="new-password"
+              placeholder="Оставьте пустым, чтобы не менять"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={clearPassword}
+            />
+          </Field>
+          <label className="hp-checkbox" style={{ display: "block", marginBottom: 8 }}>
+            <input
+              type="checkbox"
+              checked={clearPassword}
+              onChange={(e) => setClearPassword(e.target.checked)}
+            />{" "}
+            Снять пароль
+          </label>
+          <div className="hp-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+            Без заданного пароля приватная страница недоступна посетителям. Текущий пароль
+            показать нельзя — введите новый, чтобы сменить.
+          </div>
+        </>
+      ) : null}
+
+      <h3 style={{ margin: "16px 0 8px" }}>Регион</h3>
       <div className="hp-inline-form">
         <Field label="Часовой пояс">
           <Select value={timezone} onChange={(e) => setTimezone(e.target.value)}>

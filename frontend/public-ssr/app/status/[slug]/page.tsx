@@ -5,10 +5,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AccessGate } from "./AccessGate";
 import { Badge } from "./Badge";
 import { PageShell } from "./PageShell";
 import { StatusTabs } from "./StatusTabs";
-import { fetchPageSummary, PageNotFoundError } from "../../../lib/api";
+import {
+  fetchPageSummary,
+  PageAccessRequiredError,
+  PageNotFoundError,
+} from "../../../lib/api";
 import type { ApiComponent, ComponentStatus } from "../../../lib/api";
 import { impactColor, maintenanceStatusColor } from "../../../lib/badge";
 import { buildStatusMetadata } from "../../../lib/meta";
@@ -28,7 +33,7 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: { slug: string };
-  searchParams: { lang?: string | string[] };
+  searchParams: { lang?: string | string[]; access_error?: string | string[] };
 }
 
 export async function generateMetadata({ params }: PageProps) {
@@ -98,6 +103,20 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
   try {
     summary = await fetchPageSummary(params.slug);
   } catch (err) {
+    if (err instanceof PageAccessRequiredError) {
+      // Приватная страница без валидного токена — показываем парольный гейт (этап 4.2).
+      return (
+        <AccessGate
+          slug={params.slug}
+          locale={locale}
+          error={
+            (Array.isArray(searchParams.access_error)
+              ? searchParams.access_error[0]
+              : searchParams.access_error) === "1"
+          }
+        />
+      );
+    }
     if (err instanceof PageNotFoundError) {
       notFound();
     }

@@ -75,3 +75,39 @@ func TestSlackStateRejects(t *testing.T) {
 		t.Error("ожидалась ошибка при кривом формате")
 	}
 }
+
+func TestPageAccessTokenRoundTrip(t *testing.T) {
+	const secret = "test-secret"
+	pageID := uuid.New()
+	now := time.Unix(1_700_000_000, 0)
+	exp := now.Add(PageAccessTTL)
+
+	tok := PageAccessToken(secret, pageID, exp.Unix())
+	got, err := ParsePageAccessToken(secret, tok, now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("ParsePageAccessToken: %v", err)
+	}
+	if got != pageID {
+		t.Fatalf("page id mismatch: got %s want %s", got, pageID)
+	}
+}
+
+func TestPageAccessTokenRejects(t *testing.T) {
+	const secret = "test-secret"
+	pageID := uuid.New()
+	now := time.Unix(1_700_000_000, 0)
+	tok := PageAccessToken(secret, pageID, now.Add(PageAccessTTL).Unix())
+
+	// Чужой секрет.
+	if _, err := ParsePageAccessToken("other", tok, now); err == nil {
+		t.Error("ожидалась ошибка при другом секрете")
+	}
+	// Истёкший токен.
+	if _, err := ParsePageAccessToken(secret, tok, now.Add(PageAccessTTL+time.Minute)); err == nil {
+		t.Error("ожидалась ошибка при истёкшем токене")
+	}
+	// Кривой формат.
+	if _, err := ParsePageAccessToken(secret, "garbage", now); err == nil {
+		t.Error("ожидалась ошибка при кривом формате")
+	}
+}

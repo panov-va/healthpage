@@ -117,6 +117,12 @@ const (
 	PaymentStatusSucceeded PaymentStatus = "succeeded"
 )
 
+// Defines values for PublicPageVisibility.
+const (
+	PublicPageVisibilityPrivate PublicPageVisibility = "private"
+	PublicPageVisibilityPublic  PublicPageVisibility = "public"
+)
+
 // Defines values for StatusPageVisibility.
 const (
 	StatusPageVisibilityPrivate StatusPageVisibility = "private"
@@ -131,8 +137,8 @@ const (
 
 // Defines values for StatusPageUpdateVisibility.
 const (
-	Private StatusPageUpdateVisibility = "private"
-	Public  StatusPageUpdateVisibility = "public"
+	StatusPageUpdateVisibilityPrivate StatusPageUpdateVisibility = "private"
+	StatusPageUpdateVisibilityPublic  StatusPageUpdateVisibility = "public"
 )
 
 // Defines values for SubscriberChannel.
@@ -494,6 +500,20 @@ type MaintenanceUpdateCreate struct {
 // OverallStatus defines model for OverallStatus.
 type OverallStatus string
 
+// PageAccessRequest defines model for PageAccessRequest.
+type PageAccessRequest struct {
+	Password string `json:"password"`
+}
+
+// PageAccessResult defines model for PageAccessResult.
+type PageAccessResult struct {
+	// AccessToken токен для заголовка X-Page-Access
+	AccessToken string `json:"access_token"`
+
+	// ExpiresIn TTL токена доступа в секундах
+	ExpiresIn int `json:"expires_in"`
+}
+
 // PageSummary defines model for PageSummary.
 type PageSummary struct {
 	ActiveIncidents     *[]Incident      `json:"active_incidents,omitempty"`
@@ -544,7 +564,11 @@ type PublicPage struct {
 	Slug          string                  `json:"slug"`
 	Theme         *map[string]interface{} `json:"theme,omitempty"`
 	Timezone      string                  `json:"timezone"`
+	Visibility    PublicPageVisibility    `json:"visibility"`
 }
+
+// PublicPageVisibility defines model for PublicPage.Visibility.
+type PublicPageVisibility string
 
 // RefreshRequest defines model for RefreshRequest.
 type RefreshRequest struct {
@@ -605,6 +629,7 @@ type StatusPageUpdate struct {
 	HidePoweredBy *bool                       `json:"hide_powered_by,omitempty"`
 	LogoUrl       *string                     `json:"logo_url"`
 	Name          *string                     `json:"name,omitempty"`
+	Password      *string                     `json:"password"`
 	RedirectUrl   *string                     `json:"redirect_url"`
 	Theme         *map[string]interface{}     `json:"theme,omitempty"`
 	Timezone      *string                     `json:"timezone,omitempty"`
@@ -703,6 +728,9 @@ type IntegrationId = openapi_types.UUID
 // Page defines model for Page.
 type Page = int
 
+// PageAccessHeader defines model for PageAccessHeader.
+type PageAccessHeader = string
+
 // PerPage defines model for PerPage.
 type PerPage = int
 
@@ -714,6 +742,9 @@ type BadRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PasswordRequired defines model for PasswordRequired.
+type PasswordRequired = Error
 
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
@@ -774,6 +805,18 @@ type GetMaintenancesParams struct {
 	PerPage      *PerPage            `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
 
+// GetPagesSlugCalendarIcsParams defines parameters for GetPagesSlugCalendarIcs.
+type GetPagesSlugCalendarIcsParams struct {
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
+}
+
+// GetPagesSlugComponentsParams defines parameters for GetPagesSlugComponents.
+type GetPagesSlugComponentsParams struct {
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
+}
+
 // GetPagesSlugIncidentsParams defines parameters for GetPagesSlugIncidents.
 type GetPagesSlugIncidentsParams struct {
 	Status      *IncidentStatus     `form:"status,omitempty" json:"status,omitempty"`
@@ -781,6 +824,15 @@ type GetPagesSlugIncidentsParams struct {
 	ComponentId *openapi_types.UUID `form:"component_id,omitempty" json:"component_id,omitempty"`
 	Page        *Page               `form:"page,omitempty" json:"page,omitempty"`
 	PerPage     *PerPage            `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
+}
+
+// GetPagesSlugIncidentsIdParams defines parameters for GetPagesSlugIncidentsId.
+type GetPagesSlugIncidentsIdParams struct {
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
 }
 
 // GetPagesSlugMaintenancesParams defines parameters for GetPagesSlugMaintenances.
@@ -788,12 +840,30 @@ type GetPagesSlugMaintenancesParams struct {
 	Status  *MaintenanceStatus `form:"status,omitempty" json:"status,omitempty"`
 	Page    *Page              `form:"page,omitempty" json:"page,omitempty"`
 	PerPage *PerPage           `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
+}
+
+// GetPagesSlugRssParams defines parameters for GetPagesSlugRss.
+type GetPagesSlugRssParams struct {
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
+}
+
+// GetPagesSlugSummaryParams defines parameters for GetPagesSlugSummary.
+type GetPagesSlugSummaryParams struct {
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
 }
 
 // GetPagesSlugUptimeParams defines parameters for GetPagesSlugUptime.
 type GetPagesSlugUptimeParams struct {
 	ComponentId openapi_types.UUID `form:"component_id" json:"component_id"`
 	Days        *int               `form:"days,omitempty" json:"days,omitempty"`
+
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
 }
 
 // GetSubscribeConfirmParams defines parameters for GetSubscribeConfirm.
@@ -894,6 +964,9 @@ type PatchPagesIdJSONRequestBody = StatusPageUpdate
 
 // PostPagesIdComponentGroupsJSONRequestBody defines body for PostPagesIdComponentGroups for application/json ContentType.
 type PostPagesIdComponentGroupsJSONRequestBody = ComponentGroupCreate
+
+// PostPagesSlugAccessJSONRequestBody defines body for PostPagesSlugAccess for application/json ContentType.
+type PostPagesSlugAccessJSONRequestBody = PageAccessRequest
 
 // PostPagesSlugSubscribeJSONRequestBody defines body for PostPagesSlugSubscribe for application/json ContentType.
 type PostPagesSlugSubscribeJSONRequestBody = SubscribeRequest

@@ -137,6 +137,31 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   # ─────────────────────────────── PUBLIC ───────────────────────────────
+  /pages/{slug}/access:
+    post:
+      tags: [Public]
+      summary: Доступ к приватной странице по паролю
+      description: >
+        Проверяет пароль приватной страницы и возвращает токен доступа для последующих
+        публичных read-запросов (передаётся в заголовке X-Page-Access). Для публичной
+        страницы — 404 (доступ не требуется).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PageAccessRequest' }
+      responses:
+        '200':
+          description: Доступ предоставлен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageAccessResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /pages/{slug}/summary:
     get:
       tags: [Public]
@@ -145,12 +170,14 @@ paths:
       security: []
       parameters:
         - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PageSummary' }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{slug}/components:
@@ -160,6 +187,7 @@ paths:
       security: []
       parameters:
         - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
@@ -168,6 +196,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Component' }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{slug}/incidents:
@@ -188,12 +217,14 @@ paths:
           schema: { type: string, format: uuid }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/IncidentList' }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{slug}/incidents/{id}:
@@ -204,12 +235,14 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Slug'
         - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Incident' }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{slug}/maintenances:
@@ -224,12 +257,14 @@ paths:
           schema: { $ref: '#/components/schemas/MaintenanceStatus' }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/MaintenanceList' }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{slug}/uptime:
@@ -246,12 +281,14 @@ paths:
         - name: days
           in: query
           schema: { type: integer, default: 90, minimum: 1, maximum: 365 }
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UptimeReport' }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{slug}/rss:
@@ -261,12 +298,15 @@ paths:
       security: []
       parameters:
         - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
           content:
             application/rss+xml:
               schema: { type: string }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{slug}/calendar.ics:
     get:
@@ -275,12 +315,15 @@ paths:
       security: []
       parameters:
         - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/PageAccessHeader'
       responses:
         '200':
           description: OK
           content:
             text/calendar:
               schema: { type: string }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ────────────────────────────── COMPONENTS ─────────────────────────────
   /components:
@@ -1188,6 +1231,15 @@ components:
       name: per_page
       in: query
       schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+    PageAccessHeader:
+      name: X-Page-Access
+      in: header
+      required: false
+      description: >
+        Токен доступа к приватной странице (получен из POST /pages/{slug}/access).
+        Для публичных страниц игнорируется. Для приватных без валидного токена
+        публичные read-эндпоинты возвращают 401 (password_required).
+      schema: { type: string }
 
   responses:
     BadRequest:
@@ -1197,6 +1249,13 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     Unauthorized:
       description: Не авторизован / неверный токен
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PasswordRequired:
+      description: >
+        Страница приватная — нужен пароль (код `password_required`). Получите токен
+        через POST /pages/{slug}/access и передайте его в заголовке X-Page-Access.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1438,11 +1497,27 @@ components:
         timezone: { type: string }
         default_locale: { type: string }
         visibility: { type: string, enum: [public, private] }
+        # Пароль приватной страницы (write-only). Непустая строка — задать/сменить;
+        # null — снять пароль. В ответах не возвращается (хранится только хэш, §9).
+        password: { type: [string, "null"] }
         theme: { type: object, additionalProperties: true }
         logo_url: { type: [string, "null"] }
         favicon_url: { type: [string, "null"] }
         hide_powered_by: { type: boolean }
         redirect_url: { type: [string, "null"] }
+
+    PageAccessRequest:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string }
+
+    PageAccessResult:
+      type: object
+      required: [access_token, expires_in]
+      properties:
+        access_token: { type: string, description: токен для заголовка X-Page-Access }
+        expires_in: { type: integer, description: TTL токена доступа в секундах }
 
     # ── инциденты ──
     IncidentComponent:
@@ -1700,13 +1775,15 @@ components:
     # account_id, custom_domain/domain_verified, redirect_url и т.п.).
     PublicPage:
       type: object
-      required: [name, slug, timezone, default_locale]
+      required: [name, slug, timezone, default_locale, visibility]
       properties:
         name: { type: string }
         description: { type: string }
         slug: { type: string }
         timezone: { type: string }
         default_locale: { type: string }
+        # public | private — нужно публичной странице для noindex приватных.
+        visibility: { type: string, enum: [public, private] }
         theme: { type: object, additionalProperties: true }
         logo_url: { type: [string, "null"] }
         favicon_url: { type: [string, "null"] }

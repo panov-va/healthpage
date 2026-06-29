@@ -6,6 +6,8 @@
 // Контракт — единственный источник истины; типы фронта генерируются из openapi.yaml,
 // здесь — узкая прослойка под конкретный SSR-запрос.
 
+import { cookies } from "next/headers";
+
 export type ComponentStatus =
   | "operational"
   | "degraded_performance"
@@ -110,6 +112,7 @@ export interface PublicPage {
   slug: string;
   timezone: string;
   default_locale: string;
+  visibility: "public" | "private";
   theme: Record<string, unknown>;
   logo_url: string | null;
   favicon_url: string | null;
@@ -132,17 +135,31 @@ function apiBaseURL(): string {
   return process.env.HEALTHPAGE_API_URL ?? "http://localhost:8080/api/v1";
 }
 
-// PageNotFoundError — страница не существует или приватна (backend отдаёт 404 в обоих случаях,
-// чтобы не раскрывать существование приватных страниц).
+// PageNotFoundError — страница/ресурс не существует или скрыт (backend отдаёт 404).
 export class PageNotFoundError extends Error {}
 
+// PageAccessRequiredError — приватная страница: нужен пароль (backend отдаёт 401 password_required).
+// Возникает, когда нет валидного токена доступа (X-Page-Access). public-ssr показывает гейт пароля.
+export class PageAccessRequiredError extends Error {}
+
+// pageAccessHeaders читает cookie доступа приватной страницы (hp_access_<slug>), установленную
+// после ввода пароля, и форвардит её в публичный API как заголовок X-Page-Access. Cookie живёт
+// на origin public-ssr (HttpOnly); SSR-сервер перекладывает её в заголовок к backend.
+function pageAccessHeaders(slug: string): Record<string, string> {
+  const token = cookies().get(`hp_access_${slug}`)?.value;
+  return token ? { "X-Page-Access": token } : {};
+}
+
 // getJSON — общий SSR-GET к публичному API (без кэша Next: свежесть важнее; кэш сводки —
-// отдельная задача через Redis на backend). 404 → PageNotFoundError (страница/ресурс не найден
-// или приватный/скрытый — backend не раскрывает разницу).
-async function getJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${apiBaseURL()}${path}`, { cache: "no-store" });
+// отдельная задача через Redis на backend). 404 → PageNotFoundError; 401 → PageAccessRequiredError
+// (приватная страница без валидного токена доступа).
+async function getJSON<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  const res = await fetch(`${apiBaseURL()}${path}`, { cache: "no-store", headers });
   if (res.status === 404) {
     throw new PageNotFoundError(path);
+  }
+  if (res.status === 401) {
+    throw new PageAccessRequiredError(path);
   }
   if (!res.ok) {
     throw new Error(`request failed: ${res.status} ${path}`);
@@ -151,7 +168,10 @@ async function getJSON<T>(path: string): Promise<T> {
 }
 
 export async function fetchPageSummary(slug: string): Promise<PageSummary> {
-  return getJSON<PageSummary>(`/pages/${encodeURIComponent(slug)}/summary`);
+  return getJSON<PageSummary>(
+    `/pages/${encodeURIComponent(slug)}/summary`,
+    pageAccessHeaders(slug),
+  );
 }
 
 // fetchPageMeta возвращает брендинг страницы (PublicPage) для оформления вложенных вкладок
@@ -164,7 +184,10 @@ export async function fetchPageMeta(slug: string): Promise<PublicPage> {
 // fetchComponents — публичный список компонентов (для маппинга id → имя в инцидентах/работах;
 // приватные компоненты backend не отдаёт).
 export async function fetchComponents(slug: string): Promise<ApiComponent[]> {
-  return getJSON<ApiComponent[]>(`/pages/${encodeURIComponent(slug)}/components`);
+  return getJSON<ApiComponent[]>(
+    `/pages/${encodeURIComponent(slug)}/components`,
+    pageAccessHeaders(slug),
+  );
 }
 
 export async function fetchIncidents(
@@ -173,12 +196,16 @@ export async function fetchIncidents(
   perPage: number,
 ): Promise<IncidentList> {
   const q = new URLSearchParams({ page: String(page), per_page: String(perPage) });
-  return getJSON<IncidentList>(`/pages/${encodeURIComponent(slug)}/incidents?${q.toString()}`);
+  return getJSON<IncidentList>(
+    `/pages/${encodeURIComponent(slug)}/incidents?${q.toString()}`,
+    pageAccessHeaders(slug),
+  );
 }
 
 export async function fetchIncident(slug: string, id: string): Promise<ApiIncident> {
   return getJSON<ApiIncident>(
     `/pages/${encodeURIComponent(slug)}/incidents/${encodeURIComponent(id)}`,
+    pageAccessHeaders(slug),
   );
 }
 
@@ -190,6 +217,7 @@ export async function fetchMaintenances(
   const q = new URLSearchParams({ page: String(page), per_page: String(perPage) });
   return getJSON<MaintenanceList>(
     `/pages/${encodeURIComponent(slug)}/maintenances?${q.toString()}`,
+    pageAccessHeaders(slug),
   );
 }
 

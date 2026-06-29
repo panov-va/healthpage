@@ -212,6 +212,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pages/{slug}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Доступ к приватной странице по паролю
+         * @description Проверяет пароль приватной страницы и возвращает токен доступа для последующих публичных read-запросов (передаётся в заголовке X-Page-Access). Для публичной страницы — 404 (доступ не требуется).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Идентификатор страницы (поддомен) */
+                    slug: components["parameters"]["Slug"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PageAccessRequest"];
+                };
+            };
+            responses: {
+                /** @description Доступ предоставлен */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PageAccessResult"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pages/{slug}/summary": {
         parameters: {
             query?: never;
@@ -226,7 +274,10 @@ export interface paths {
         get: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -244,6 +295,7 @@ export interface paths {
                         "application/json": components["schemas"]["PageSummary"];
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -266,7 +318,10 @@ export interface paths {
         get: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -284,6 +339,7 @@ export interface paths {
                         "application/json": components["schemas"]["Component"][];
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -312,7 +368,10 @@ export interface paths {
                     page?: components["parameters"]["Page"];
                     per_page?: components["parameters"]["PerPage"];
                 };
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -330,6 +389,7 @@ export interface paths {
                         "application/json": components["schemas"]["IncidentList"];
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -352,7 +412,10 @@ export interface paths {
         get: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -371,6 +434,7 @@ export interface paths {
                         "application/json": components["schemas"]["Incident"];
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -397,7 +461,10 @@ export interface paths {
                     page?: components["parameters"]["Page"];
                     per_page?: components["parameters"]["PerPage"];
                 };
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -415,6 +482,7 @@ export interface paths {
                         "application/json": components["schemas"]["MaintenanceList"];
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -440,7 +508,10 @@ export interface paths {
                     component_id: string;
                     days?: number;
                 };
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -458,6 +529,7 @@ export interface paths {
                         "application/json": components["schemas"]["UptimeReport"];
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
                 404: components["responses"]["NotFound"];
             };
         };
@@ -480,7 +552,10 @@ export interface paths {
         get: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -498,6 +573,8 @@ export interface paths {
                         "application/rss+xml": string;
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
+                404: components["responses"]["NotFound"];
             };
         };
         put?: never;
@@ -519,7 +596,10 @@ export interface paths {
         get: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
                 path: {
                     /** @description Идентификатор страницы (поддомен) */
                     slug: components["parameters"]["Slug"];
@@ -537,6 +617,8 @@ export interface paths {
                         "text/calendar": string;
                     };
                 };
+                401: components["responses"]["PasswordRequired"];
+                404: components["responses"]["NotFound"];
             };
         };
         put?: never;
@@ -2578,6 +2660,7 @@ export interface components {
             default_locale?: string;
             /** @enum {string} */
             visibility?: "public" | "private";
+            password?: string | null;
             theme?: {
                 [key: string]: unknown;
             };
@@ -2585,6 +2668,15 @@ export interface components {
             favicon_url?: string | null;
             hide_powered_by?: boolean;
             redirect_url?: string | null;
+        };
+        PageAccessRequest: {
+            password: string;
+        };
+        PageAccessResult: {
+            /** @description токен для заголовка X-Page-Access */
+            access_token: string;
+            /** @description TTL токена доступа в секундах */
+            expires_in: number;
         };
         IncidentComponent: {
             /** Format: uuid */
@@ -2793,6 +2885,8 @@ export interface components {
             slug: string;
             timezone: string;
             default_locale: string;
+            /** @enum {string} */
+            visibility: "public" | "private";
             theme?: {
                 [key: string]: unknown;
             };
@@ -2909,6 +3003,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Страница приватная — нужен пароль (код `password_required`). Получите токен через POST /pages/{slug}/access и передайте его в заголовке X-Page-Access. */
+        PasswordRequired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Не найдено */
         NotFound: {
             headers: {
@@ -2935,6 +3038,8 @@ export interface components {
         IntegrationId: string;
         Page: number;
         PerPage: number;
+        /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+        PageAccessHeader: string;
     };
     requestBodies: never;
     headers: never;

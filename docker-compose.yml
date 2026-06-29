@@ -100,5 +100,23 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  # Воркер канала Telegram (этап 3.7): потребляет q.telegram (доставка) и держит бота
+  # подписки (long-poll getUpdates: /start <slug>, /stop). Требует TELEGRAM_BOT_TOKEN.
+  worker-telegram:
+    build:
+      context: ./backend
+    entrypoint: ["/app/worker-telegram"]
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      DATABASE_URL: ${DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   pgdata:

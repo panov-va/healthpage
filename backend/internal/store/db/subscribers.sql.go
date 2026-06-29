@@ -197,6 +197,51 @@ func (q *Queries) ListConfirmedSubscribers(ctx context.Context, statusPageID uui
 	return items, nil
 }
 
+const listSubscribersByChannelAddress = `-- name: ListSubscribersByChannelAddress :many
+SELECT id, status_page_id, channel, address, confirmed, confirm_token, unsubscribe_token, scope, component_ids, created_at, updated_at FROM subscribers
+WHERE channel = $1 AND address = $2
+ORDER BY created_at
+`
+
+type ListSubscribersByChannelAddressParams struct {
+	Channel string
+	Address string
+}
+
+// Все подписки одного адреса в канале (один chat_id в Telegram/MAX может быть подписан на
+// несколько страниц). Используется ботом для команды /stop без аргумента (отписка отовсюду).
+func (q *Queries) ListSubscribersByChannelAddress(ctx context.Context, arg ListSubscribersByChannelAddressParams) ([]Subscriber, error) {
+	rows, err := q.db.Query(ctx, listSubscribersByChannelAddress, arg.Channel, arg.Address)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Subscriber{}
+	for rows.Next() {
+		var i Subscriber
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatusPageID,
+			&i.Channel,
+			&i.Address,
+			&i.Confirmed,
+			&i.ConfirmToken,
+			&i.UnsubscribeToken,
+			&i.Scope,
+			&i.ComponentIds,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setSubscriberConfirmToken = `-- name: SetSubscriberConfirmToken :one
 UPDATE subscribers SET confirm_token = $2, scope = $3, component_ids = $4
 WHERE id = $1

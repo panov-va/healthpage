@@ -261,7 +261,21 @@
       ListPublicMaintenances; `writeRaw` с нужным Content-Type. `Deps.BaseURL`=cfg.BaseURL. Юнит-тесты
       (RSS parse/порядок/escaping, iCal поля/escaping/фолдинг) + интеграционный на PG16 (RSS+iCal
       content-type и содержимое, приватная→404). build/test/vet/gofmt/golangci-lint зелёные. Ждёт коммита.
-- [ ] **3.7** `worker-telegram`: бот, подписка на страницу/компоненты, доставка.
+- [x] **3.7** `worker-telegram`: бот, подписка на страницу/компоненты, доставка.
+      — ✅ Контракт НЕ менялся. Пакет `internal/telegram`: `Client` (минимальный Bot API —
+      sendMessage/getUpdates/getMe; классификация ошибок: 403/4xx → Permanent, 429 → RetryAfter,
+      сеть/5xx → транзиентная), `Render` (RU/EN сообщения incident_new/update + maintenance,
+      parse_mode=HTML с экранированием), `Worker.Process` (идемпотентность по Notification.id,
+      ретрай через `notify.Engine.Retry`/DLQ; Permanent-ошибка → дроп(Ack)), `Bot.Run` (long-poll
+      getUpdates: `/start <slug>` подписывает чат на страницу [confirmed сразу, scope=page],
+      `/stop [slug]` отписывает). `cmd/worker-telegram` совмещает потребление q.telegram и бота.
+      store: новый `SubscribersByChannelAddress` (+ sqlc-запрос) для `/stop` без аргумента.
+      config: `TELEGRAM_BOT_TOKEN`. Dockerfile/compose/.env.example обновлены. Юнит-тесты
+      (client HTTP/ошибки, render, worker happy/идемпотент/orphan/retry/permanent/bad-addr,
+      bot parseCommand/start/stop) + интеграционный на PG16 (подписка/идемпотентность/отписка).
+      build/test/vet/gofmt/golangci-lint зелёные. **Флаг: подписка только на страницу (scope=page);**
+      компонентная подписка через бота отложена (deep-link payload ≤64 симв. не вмещает UUID
+      компонентов — нужен интерактивный выбор inline-кнопками). Ждёт коммита.
 - [ ] **3.8** `worker-max`: MAX Bot API, подписка, доставка; троттлинг ~30 rps.
       ⚠️ Зависит от организационной готовности (верификация самозанятого + модерация бота).
 - [ ] **3.9** **Slack-канал** (DESIGN §4.4): Slack App, OAuth `/subscribe/slack/start` +

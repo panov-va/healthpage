@@ -13,14 +13,13 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1–3.6 готовы по коду, ждут коммита.
+**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1–3.7 готовы по коду, ждут коммита.
 Этапы 1–2 закоммичены человеком.
-**Следующий шаг:** Этап 3.7 — `worker-telegram`: бот (Telegram Bot API), подписка на страницу/
-компоненты, доставка. По образцу worker-email: consumer `q.telegram` (manual ack), `Worker.Process`
-с идемпотентностью по Notification.id, рендер сообщения, ретрай через `notify.Engine.Retry`. Подписка
-через бот (команда /start с deep-link на страницу) — НЕ через `POST /subscribe` (тот пока только email).
-Нужен `TELEGRAM_BOT_TOKEN` (организационно — создать бота у @BotFather). Затем 3.8 (max), 3.9 (slack),
-3.10 (управление подписчиками в админке).
+**Следующий шаг:** Этап 3.8 — `worker-max`: MAX Bot API (симметрично worker-telegram), подписка
+через бота, доставка, троттлинг ~30 rps. ⚠️ Зависит от организационной готовности (верификация
+самозанятого + модерация бота — стоп-маркер MAX ниже). Затем 3.9 (slack), 3.10 (управление
+подписчиками в админке). Организационно для 3.7: создать бота у @BotFather → `TELEGRAM_BOT_TOKEN`;
+deep-link `t.me/<bot>?start=<slug>` на публичной странице/в админке (UI — этап 3.10/4).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -118,6 +117,46 @@
   `queue_integration_test.go` (skip без `HEALTHPAGE_TEST_AMQP`): publisher confirm + маршрутизация →
   q.email; Nack(requeue=false) → dead-letter в q.dlq.email; delayed-публикация приходит через ~1s.
   **PASS.** go build/vet/gofmt/golangci-lint зелёные; backend и rabbitmq образы собираются.
+
+**Этап 3.7 — worker-telegram (написано, юнит + интеграционный на PG16 PASS, ждёт коммита):**
+- **Контракт НЕ менялся.** Подписка через бота (DESIGN §3.4), не через `POST /subscribe` (тот email-only).
+- **Пакет `internal/telegram`:**
+  - `client.go` — минимальный Bot API клиент: `SendMessage`/`GetUpdates`/`GetMe`; общий `call` (JSON POST).
+    `APIError` с классификацией: `error_code` 403/прочие 4xx → `Permanent=true` (повтор бесполезен),
+    429 → `RetryAfter` (из parameters.retry_after, не перманентна), сеть/5xx → транзиентная.
+  - `render.go` — `Render(RenderInput)→string` (parse_mode=HTML): incident_new/update + maintenance
+    scheduled/started/completed, i18n RU/EN (симметрично email), экранирование через html.EscapeString,
+    подвал — ссылка на страницу + подсказка `/stop`. **subscriber_confirm НЕ рендерится** (в Telegram
+    нет double opt-in). Свой минимальный dict (не тянем зависимость от пакета email).
+  - `worker.go` — `Worker.Process(ctx, body)→Disposition` (Ack/Reject/Requeue, локальные — пакеты
+    каналов независимы). Зеркало email-воркера: идемпотентность по Notification.id (orphan→Ack,
+    sent→Ack), парс chat_id из Address (нечисловой→Reject), рендер, отправка. **Permanent-ошибка →
+    Ack (дроп)** — заблокировавшего/несуществующий чат ретраить/DLQ-ить бессмысленно; транзиентная →
+    `Retrier.Retry` (=notify.Engine) → delayed-ретрай или DLQ при исчерпании; ошибка MarkSent → Requeue.
+  - `bot.go` — `Bot.Run(ctx)` long-poll getUpdates (offset, timeout 30с, allowed_updates=[message];
+    ошибка → лог + пауза `retryDelay` с учётом 429). `/start <slug>` → StatusPageBySlug → upsert
+    `Subscriber{channel=telegram, address=chat_id, confirmed=true, scope=page}` (старт бота = согласие);
+    идемпотентно (есть → «уже подписаны»). `/start` без арга / неизвестный slug → подсказка.
+    `/stop <slug>` → снять одну; `/stop` → снять все подписки чата (через `SubscribersByChannelAddress`).
+    Ответы на локали страницы (или языке клиента). `parseCommand` (нижний регистр, срез `@botname`).
+- **store:** новый sqlc-запрос `ListSubscribersByChannelAddress` (channel+address) → метод
+  `SubscribersByChannelAddress` (для `/stop` без арга — chat_id может быть подписан на много страниц).
+- **cmd/worker-telegram:** один процесс совмещает (1) consume `q.telegram` (manual ack, prefetch=16,
+  Process→Ack/Nack) и (2) `Bot.Run` в горутине. `GetMe` при старте — проверка токена + лог @username.
+  `config.MustTelegramBotToken()` (без токена воркер не стартует). DeclareTopology идемпотентно.
+- **config:** `TELEGRAM_BOT_TOKEN` (env). Dockerfile (бинарь /app/worker-telegram), docker-compose
+  (сервис worker-telegram), .env.example обновлены.
+- **Флаг (решение агента в рамках §5):** подписка через бота — **только на всю страницу (scope=page)**.
+  Компонентная подписка отложена: deep-link start-payload Telegram ≤64 симв. и [A-Za-z0-9_-] не вмещает
+  UUID компонентов; для неё нужен интерактивный выбор inline-кнопками (отдельная задача). Email-подписка
+  компонентами (scope=components) при этом работает (3.5).
+- **Проверено:** юнит — `client_test` (sendMessage path/body, 403→Permanent, 429→RetryAfter, getUpdates
+  парс), `render_test` (incident RU, maintenance EN, escaping, ошибки), `worker_test` (happy/идемпотент/
+  orphan/bad-addr/транзиент-retry/исчерпание/Permanent-дроп/malformed/unrenderable/mark-sent→requeue),
+  `bot_test` (parseCommand, start подписка/идемпотент/no-arg/unknown, stop one/all/none с фейками).
+  Интеграционный `bot_integration_test` на PG16 (HEALTHPAGE_TEST_DB): /start→confirmed page-подписчик,
+  повтор без дубля, вторая страница → SubscribersByChannelAddress видит обе, /stop slug снимает одну,
+  /stop снимает остальное. **PASS.** build/test/vet/gofmt/golangci-lint зелёные.
 
 **Этап 3.6 — публичные фиды RSS/iCal (написано, проверено на PG16, ждёт коммита):**
 - **Контракт НЕ менялся** — `GET /pages/{slug}/rss` (application/rss+xml), `GET /pages/{slug}/calendar.ics`
@@ -892,3 +931,13 @@ _Этап 0 — завершён и закоммичен._
   Publisher с confirms, Consume с manual ack), `cmd/queue-setup` (идемпотентно). Dep amqp091-go.
   Проверено на живом брокере: топология по §8.1 (list_exchanges/queues/bindings), интеграционный тест
   (confirm/DLX/delayed) PASS. Закрыт TODO про плагин. Дальше — 3.3 (движок уведомлений).
+- 2026-06-29 — Этап 3.7 (worker-telegram): пакет `internal/telegram` — Bot API клиент (sendMessage/
+  getUpdates/getMe + классификация ошибок: 403/4xx Permanent, 429 RetryAfter, сеть/5xx транзиент),
+  Render (RU/EN HTML-сообщения incident/maintenance), Worker.Process (зеркало email: идемпотентность по
+  Notification.id, retry через notify.Engine/DLQ, Permanent→дроп), Bot.Run (long-poll: /start <slug>
+  подписывает [confirmed, scope=page], /stop [slug] отписывает). cmd/worker-telegram совмещает
+  consume q.telegram + бота. store: +SubscribersByChannelAddress (sqlc) для /stop. config:
+  TELEGRAM_BOT_TOKEN. Dockerfile/compose/.env обновлены. Контракт НЕ менялся. Юнит + интеграционный на
+  PG16 PASS; build/test/vet/gofmt/lint зелёные. **Флаг:** подписка через бота только на страницу
+  (scope=page); компонентная отложена (deep-link ≤64 симв. не вмещает UUID). Дальше — 3.8 (worker-max,
+  симметрично; ⚠️ ждёт оргготовности MAX) → 3.9 (slack) → 3.10 (управление подписчиками в админке).

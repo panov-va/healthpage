@@ -76,8 +76,8 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 | postgres | БД (источник истины) | `postgres` | 5432 | в compose |
 | redis | Кэш публичной сводки | `redis` | 6379 | в compose |
 | rabbitmq | Очередь уведомлений/webhook | `rabbitmq` | 5672 / 15672 (UI) | в compose (свой образ: +delayed-плагин) |
-| worker-email | Доставка email (SMTP) | `worker-email` | — | не создан |
-| worker-telegram | Доставка Telegram | `worker-telegram` | — | не создан |
+| worker-email | Доставка email (SMTP) | `worker-email` | — | создан (3.4), в compose |
+| worker-telegram | Доставка Telegram + бот подписки | `worker-telegram` | — | создан (3.7), в compose |
 | worker-max | Доставка MAX | `worker-max` | — | не создан |
 | worker-webhook | Slack-подписка + исходящие webhook | `worker-webhook` | — | не создан |
 | worker-billing | Рекуррентные списания | `worker-billing` | — | не создан |
@@ -120,7 +120,12 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 ### Telegram (worker-telegram)
 | Переменная | Назначение |
 |-----------|-----------|
-| `TELEGRAM_BOT_TOKEN` | токен бота |
+| `TELEGRAM_BOT_TOKEN` | токен бота от @BotFather; без него воркер не стартует |
+
+> Подписка — через бота, не через `POST /subscribe`: пользователь открывает
+> `t.me/<bot>?start=<slug>` → команда `/start <slug>` создаёт подписчика на страницу (подтверждён
+> сразу). `/stop [<slug>]` — отписка. Один процесс совмещает доставку из `q.telegram` и long-poll
+> бота. MVP: подписка только на всю страницу (scope=page).
 
 ### MAX (worker-max)
 | Переменная | Назначение |

@@ -21,6 +21,13 @@ ORDER BY created_at;
 SELECT * FROM subscribers
 WHERE status_page_id = $1 AND channel = $2 AND address = $3;
 
+-- name: ListSubscribersByChannelAddress :many
+-- Все подписки одного адреса в канале (один chat_id в Telegram/MAX может быть подписан на
+-- несколько страниц). Используется ботом для команды /stop без аргумента (отписка отовсюду).
+SELECT * FROM subscribers
+WHERE channel = $1 AND address = $2
+ORDER BY created_at;
+
 -- name: GetSubscriberByConfirmToken :one
 -- Поиск по хэшу confirm-токена (double opt-in подтверждение).
 SELECT * FROM subscribers WHERE confirm_token = $1;

@@ -57,6 +57,24 @@ func (s *Store) SubscriberByPageChannelAddress(
 	return mapSubscriber(row), nil
 }
 
+// SubscribersByChannelAddress возвращает все подписки одного адреса в канале (один chat_id
+// мессенджера может быть подписан на несколько страниц). Для команды бота /stop без аргумента.
+func (s *Store) SubscribersByChannelAddress(
+	ctx context.Context, channel domain.SubscriberChannel, address string,
+) ([]domain.Subscriber, error) {
+	rows, err := s.q.ListSubscribersByChannelAddress(ctx, db.ListSubscribersByChannelAddressParams{
+		Channel: string(channel), Address: address,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list subscribers by channel/address: %w", err)
+	}
+	out := make([]domain.Subscriber, len(rows))
+	for i, row := range rows {
+		out[i] = mapSubscriber(row)
+	}
+	return out, nil
+}
+
 // SubscriberByConfirmTokenHash находит подписчика по хэшу confirm-токена. ErrNotFound если нет.
 func (s *Store) SubscriberByConfirmTokenHash(ctx context.Context, tokenHash string) (domain.Subscriber, error) {
 	row, err := s.q.GetSubscriberByConfirmToken(ctx, &tokenHash)

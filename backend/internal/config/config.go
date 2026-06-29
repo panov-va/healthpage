@@ -33,6 +33,10 @@ type Config struct {
 	SMTPPassword string
 	SMTPFrom     string // адрес отправителя по умолчанию
 	SMTPTLS      bool   // true — неявный TLS (порт 465); иначе STARTTLS
+
+	// TelegramBotToken — токен бота от @BotFather (worker-telegram). Если пуст — воркер не
+	// стартует (бот без токена бессмыслен).
+	TelegramBotToken string
 }
 
 // IsProd сообщает, работаем ли в prod-режиме (влияет, напр., на флаг Secure у cookie).
@@ -59,6 +63,8 @@ func Load() Config {
 		SMTPPassword: env("SMTP_PASSWORD", ""),
 		SMTPFrom:     env("SMTP_FROM", ""),
 		SMTPTLS:      env("SMTP_TLS", "") == "true",
+
+		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""),
 	}
 	// Дефолт секрета отписки — операторский JWT-секрет (для dev/одно-процессного запуска).
 	if c.SubscriptionSecret == "" {
@@ -85,6 +91,16 @@ func (c Config) MustRabbitMQURL() string {
 		os.Exit(1)
 	}
 	return c.RabbitMQURL
+}
+
+// MustTelegramBotToken возвращает токен бота или завершает процесс, если он не задан
+// (используется командой worker-telegram).
+func (c Config) MustTelegramBotToken() string {
+	if c.TelegramBotToken == "" {
+		fmt.Fprintln(os.Stderr, "TELEGRAM_BOT_TOKEN is required")
+		os.Exit(1)
+	}
+	return c.TelegramBotToken
 }
 
 func env(key, fallback string) string {

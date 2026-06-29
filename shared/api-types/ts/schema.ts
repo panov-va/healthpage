@@ -1554,6 +1554,8 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    /** @description Страница, чьих подписчиков вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. Включает неподтверждённых (pending). */
+                    status_page_id?: string;
                     page?: components["parameters"]["Page"];
                     per_page?: components["parameters"]["PerPage"];
                 };
@@ -2745,6 +2747,8 @@ export interface components {
         Subscriber: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            status_page_id: string;
             channel: components["schemas"]["SubscriberChannel"];
             /** @description email | telegram chat_id | webhook url */
             address: string;
@@ -2755,6 +2759,11 @@ export interface components {
             created_at?: string;
         };
         SubscriberCreate: {
+            /**
+             * Format: uuid
+             * @description Страница, на которую подписывается
+             */
+            status_page_id: string;
             channel: components["schemas"]["SubscriberChannel"];
             address: string;
             scope?: components["schemas"]["SubscriberScope"];

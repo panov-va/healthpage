@@ -242,6 +242,52 @@ func (q *Queries) ListSubscribersByChannelAddress(ctx context.Context, arg ListS
 	return items, nil
 }
 
+const listSubscribersByPage = `-- name: ListSubscribersByPage :many
+SELECT id, status_page_id, channel, address, confirmed, confirm_token, unsubscribe_token, scope, component_ids, created_at, updated_at FROM subscribers
+WHERE status_page_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListSubscribersByPageParams struct {
+	StatusPageID uuid.UUID
+	Limit        int32
+	Offset       int32
+}
+
+// Все подписчики страницы (включая неподтверждённых) — для админ-управления. Пагинация.
+func (q *Queries) ListSubscribersByPage(ctx context.Context, arg ListSubscribersByPageParams) ([]Subscriber, error) {
+	rows, err := q.db.Query(ctx, listSubscribersByPage, arg.StatusPageID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Subscriber{}
+	for rows.Next() {
+		var i Subscriber
+		if err := rows.Scan(
+			&i.ID,
+			&i.StatusPageID,
+			&i.Channel,
+			&i.Address,
+			&i.Confirmed,
+			&i.ConfirmToken,
+			&i.UnsubscribeToken,
+			&i.Scope,
+			&i.ComponentIds,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setSubscriberConfirmToken = `-- name: SetSubscriberConfirmToken :one
 UPDATE subscribers SET confirm_token = $2, scope = $3, component_ids = $4
 WHERE id = $1

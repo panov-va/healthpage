@@ -788,6 +788,13 @@ paths:
       tags: [Subscribers]
       summary: Список подписчиков
       parameters:
+        - name: status_page_id
+          in: query
+          required: false
+          description: >
+            Страница, чьих подписчиков вернуть. Обязателен при операторском JWT; при ApiToken
+            выводится из токена. Включает неподтверждённых (pending).
+          schema: { type: string, format: uuid }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
       responses:
@@ -1629,9 +1636,10 @@ components:
     # ── подписчики ──
     Subscriber:
       type: object
-      required: [id, channel, address, confirmed, scope]
+      required: [id, status_page_id, channel, address, confirmed, scope]
       properties:
         id: { type: string, format: uuid }
+        status_page_id: { type: string, format: uuid }
         channel: { $ref: '#/components/schemas/SubscriberChannel' }
         address: { type: string, description: "email | telegram chat_id | webhook url" }
         confirmed: { type: boolean }
@@ -1643,8 +1651,9 @@ components:
 
     SubscriberCreate:
       type: object
-      required: [channel, address]
+      required: [status_page_id, channel, address]
       properties:
+        status_page_id: { type: string, format: uuid, description: "Страница, на которую подписывается" }
         channel: { $ref: '#/components/schemas/SubscriberChannel' }
         address: { type: string }
         scope: { $ref: '#/components/schemas/SubscriberScope' }

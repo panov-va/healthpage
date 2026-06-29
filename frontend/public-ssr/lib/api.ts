@@ -171,6 +171,17 @@ export async function fetchMaintenances(
   );
 }
 
+// unsubscribeByToken выполняет отписку по HMAC-токену из письма (GET /unsubscribe). Идемпотентно
+// на стороне backend (валидный токен всегда 200, даже если строки уже нет). Возвращает true при
+// успехе, false при недействительном токене (400).
+export async function unsubscribeByToken(token: string): Promise<boolean> {
+  const res = await fetch(
+    `${apiBaseURL()}/unsubscribe?token=${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
+  return res.ok;
+}
+
 // componentNameMap строит id → имя из публичного списка компонентов.
 export function componentNameMap(components: ApiComponent[]): Record<string, string> {
   const map: Record<string, string> = {};

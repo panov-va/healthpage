@@ -75,6 +75,22 @@ func (s *Store) SubscribersByChannelAddress(
 	return out, nil
 }
 
+// ListSubscribersByPage возвращает подписчиков страницы (включая неподтверждённых), новые сверху,
+// с пагинацией — для админ-управления (этап 3.10).
+func (s *Store) ListSubscribersByPage(ctx context.Context, pageID uuid.UUID, limit, offset int) ([]domain.Subscriber, error) {
+	rows, err := s.q.ListSubscribersByPage(ctx, db.ListSubscribersByPageParams{
+		StatusPageID: pageID, Limit: int32(limit), Offset: int32(offset),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list subscribers by page: %w", err)
+	}
+	out := make([]domain.Subscriber, len(rows))
+	for i, row := range rows {
+		out[i] = mapSubscriber(row)
+	}
+	return out, nil
+}
+
 // SubscriberByConfirmTokenHash находит подписчика по хэшу confirm-токена. ErrNotFound если нет.
 func (s *Store) SubscriberByConfirmTokenHash(ctx context.Context, tokenHash string) (domain.Subscriber, error) {
 	row, err := s.q.GetSubscriberByConfirmToken(ctx, &tokenHash)

@@ -44,7 +44,7 @@ type Worker struct {
 	sender     Sender
 	retrier    Retrier
 	systemSMTP SMTP   // дефолтный отправитель (если у страницы нет своего)
-	baseURL    string // для ссылок confirm/unsubscribe (эндпоинты API)
+	baseURL    string // публичный origin: ссылка на страницу, confirm (API), отписку (public-ssr)
 	secret     string // секрет HMAC-токена отписки
 	log        *slog.Logger
 }
@@ -171,12 +171,14 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, 
 }
 
 // unsubscribeURL строит ссылку отписки с HMAC-токеном (пустая при некорректном subscriber_id).
+// Ведёт на публичную страницу отписки public-ssr (`/unsubscribe`, этап 3.10) — она и выполняет
+// отписку через backend и показывает подтверждение. baseURL — публичный origin (как для /status).
 func (w *Worker) unsubscribeURL(subscriberID string) string {
 	sid, err := uuid.Parse(subscriberID)
 	if err != nil {
 		return ""
 	}
-	return w.baseURL + "/api/v1/unsubscribe?token=" + url.QueryEscape(subscription.UnsubscribeToken(w.secret, sid))
+	return w.baseURL + "/unsubscribe?token=" + url.QueryEscape(subscription.UnsubscribeToken(w.secret, sid))
 }
 
 // effectiveSMTP выбирает SMTP страницы (если задан её smtp_config), иначе системный.

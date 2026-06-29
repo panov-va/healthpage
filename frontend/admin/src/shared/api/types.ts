@@ -52,6 +52,12 @@ export type MaintenanceUpdate = Schemas["MaintenanceUpdate"];
 export type MaintenanceUpdateCreate = Schemas["MaintenanceUpdateCreate"];
 export type MaintenanceList = Schemas["MaintenanceList"];
 
+// ── подписчики ──
+export type Subscriber = Schemas["Subscriber"];
+export type SubscriberCreate = Schemas["SubscriberCreate"];
+export type SubscriberChannel = Schemas["SubscriberChannel"];
+export type SubscriberScope = Schemas["SubscriberScope"];
+
 export type ApiError = Schemas["Error"];
 
 // Нормативный список статусов компонента (для селектов в UI).
@@ -77,4 +83,13 @@ export const MAINTENANCE_STATUSES: MaintenanceStatus[] = [
   "scheduled",
   "in_progress",
   "completed",
+];
+
+// Каналы, доступные оператору для ручного добавления подписчика (push-каналы).
+// rss/ical — pull-фиды, webhook — отдельный поток; через ручное добавление не заводятся.
+export const MANUAL_SUBSCRIBER_CHANNELS: SubscriberChannel[] = [
+  "email",
+  "telegram",
+  "max",
+  "slack",
 ];

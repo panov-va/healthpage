@@ -123,6 +123,10 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/maintenances/{id}", s.handlePatchMaintenance)
 			r.Delete("/maintenances/{id}", s.handleDeleteMaintenance)
 			r.Post("/maintenances/{id}/updates", s.handleAddMaintenanceUpdate)
+
+			r.Get("/subscribers", s.handleListSubscribers)
+			r.Post("/subscribers", s.handleCreateSubscriber)
+			r.Delete("/subscribers/{id}", s.handleDeleteSubscriber)
 		})
 	})
 

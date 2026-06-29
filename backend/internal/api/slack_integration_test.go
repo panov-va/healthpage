@@ -42,7 +42,8 @@ func TestSlackSubscribeIntegration(t *testing.T) {
 	defer raw.Close()
 
 	const secret = "test-sub-secret"
-	const webhookURL = "https://hooks.slack.com/services/T/B/abc123"
+	// Уникальный per-run webhook URL — чтобы дедуп по адресу не ловил остатки прежних прогонов.
+	webhookURL := "https://hooks.slack.com/services/T/B/" + uuid.NewString()
 
 	// Стаб Slack oauth.v2.access.
 	oauthStub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -618,6 +618,7 @@ type Subscriber struct {
 	CreatedAt    *time.Time            `json:"created_at,omitempty"`
 	Id           openapi_types.UUID    `json:"id"`
 	Scope        SubscriberScope       `json:"scope"`
+	StatusPageId openapi_types.UUID    `json:"status_page_id"`
 }
 
 // SubscriberChannel defines model for SubscriberChannel.
@@ -629,6 +630,9 @@ type SubscriberCreate struct {
 	Channel      SubscriberChannel     `json:"channel"`
 	ComponentIds *[]openapi_types.UUID `json:"component_ids,omitempty"`
 	Scope        *SubscriberScope      `json:"scope,omitempty"`
+
+	// StatusPageId Страница, на которую подписывается
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
 }
 
 // SubscriberScope defines model for SubscriberScope.
@@ -791,8 +795,10 @@ type GetSubscribeSlackCallbackParams struct {
 
 // GetSubscribersParams defines parameters for GetSubscribers.
 type GetSubscribersParams struct {
-	Page    *Page    `form:"page,omitempty" json:"page,omitempty"`
-	PerPage *PerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+	// StatusPageId Страница, чьих подписчиков вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. Включает неподтверждённых (pending).
+	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
+	Page         *Page               `form:"page,omitempty" json:"page,omitempty"`
+	PerPage      *PerPage            `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
 
 // GetUnsubscribeParams defines parameters for GetUnsubscribe.

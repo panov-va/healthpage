@@ -28,6 +28,13 @@ SELECT * FROM subscribers
 WHERE channel = $1 AND address = $2
 ORDER BY created_at;
 
+-- name: ListSubscribersByPage :many
+-- Все подписчики страницы (включая неподтверждённых) — для админ-управления. Пагинация.
+SELECT * FROM subscribers
+WHERE status_page_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
+
 -- name: GetSubscriberByConfirmToken :one
 -- Поиск по хэшу confirm-токена (double opt-in подтверждение).
 SELECT * FROM subscribers WHERE confirm_token = $1;

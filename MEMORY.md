@@ -12,14 +12,12 @@
 
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
-**Фаза:** Этапы 0–2 закоммичены человеком; Этап 1 закрыт по коду. Этап 3 (Подписки и уведомления)
-в работе: 3.1–3.7 + 3.9 готовы по коду, ждут коммита. **3.8 (MAX) ОТЛОЖЕН** (после Этапа 7).
-**Следующий шаг:** Этап 3.10 — управление подписчиками в админке (FSD: список/удаление подписчиков
-страницы; страница самоуправления подпиской для клиента). Это закрывает Этап 3 (MVP-каналы:
-email/telegram/slack). Организационно: для 3.7 — бот у @BotFather (`TELEGRAM_BOT_TOKEN`),
-deep-link `t.me/<bot>?start=<slug>`; для 3.9 — Slack App (scope incoming-webhook),
-`SLACK_CLIENT_ID/SECRET`, redirect_uri `<BASE_URL>/api/v1/subscribe/slack/callback`, кнопка
-«Add to Slack» на публичной странице (UI — 3.10/4).
+**Фаза:** Этапы 0–2 закоммичены человеком; Этап 1 закрыт по коду. **Этап 3 (Подписки и уведомления)
+ЗАКРЫТ ПО КОДУ** (3.1–3.7, 3.9, 3.10 готовы, ждут коммита). **3.8 (MAX) ОТЛОЖЕН** (после Этапа 7).
+**Следующий шаг:** Этап 4 — Кастомизация и white-label (DESIGN §3.6): тема/логотип/favicon страницы,
+кастомные домены + верификация, скрытие «Powered by» (премиум), кастомный SMTP/from_email (4.5).
+Начать с 4.1 (см. ROADMAP). Организационно осталось: для 3.7 — `TELEGRAM_BOT_TOKEN` у @BotFather;
+для 3.9 — Slack App + `SLACK_CLIENT_ID/SECRET`, redirect_uri `<BASE_URL>/api/v1/subscribe/slack/callback`.
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -117,6 +115,40 @@ deep-link `t.me/<bot>?start=<slug>`; для 3.9 — Slack App (scope incoming-we
   `queue_integration_test.go` (skip без `HEALTHPAGE_TEST_AMQP`): publisher confirm + маршрутизация →
   q.email; Nack(requeue=false) → dead-letter в q.dlq.email; delayed-публикация приходит через ~1s.
   **PASS.** go build/vet/gofmt/golangci-lint зелёные; backend и rabbitmq образы собираются.
+
+**Этап 3.10 — управление подписчиками в админке + клиентская отписка (написано, тесты/сборки PASS, ждёт коммита):**
+- **Контракт расширен с санкции человека** (как 2.5/2.6/2.9): `GET /subscribers` +query `status_page_id`
+  (обязателен при JWT, включает неподтверждённых); `SubscriberCreate` +`status_page_id` (required);
+  ответ `Subscriber` +`status_page_id`. Типы перегенерированы (TS+Go), openapi провалиден.
+- **Backend:** sqlc `ListSubscribersByPage` (вкл. pending, пагинация, новые сверху) → store-метод
+  `ListSubscribersByPage`. API `subscribers.go`: `handleListSubscribers` (status_page_id+authorizePage+
+  parsePagination, ответ — **plain array** как в контракте, без envelope), `handleCreateSubscriber`
+  (**ручное добавление оператором, confirmed=true**; только push-каналы `IsPush` email/telegram/max/slack
+  иначе 422; дубль (page,channel,address) → 422; scope=components валидирует компоненты через
+  parseMaintenanceComponents), `handleDeleteSubscriber` (SubscriberByID→authorizePage(sub.StatusPageID)→
+  delete→204; чужой/несуществующий→404). `toSubscriberResponse` DTO. Роуты в admin-группе server.go.
+- **Решения/флаги:** (1) ручное добавление **минует double opt-in** (confirmed=true) — оператор
+  отвечает за согласие на обработку ПД (152-ФЗ, DESIGN §4.3/§9); rss/ical/webhook через ручное
+  добавление не заводятся. (2) Список — plain array (контракт `GET /subscribers` так задан), пагинация
+  page/per_page без total; UI листает «вперёд», пока приходит полная страница.
+- **Admin (FSD):** `entities/subscriber` (list/create/delete + типы), `features/subscriber-add`
+  (форма: канал/адрес/scope/компоненты через ComponentChecklist), `pages/subscribers/SubscribersPage`
+  (список с бейджем confirmed/pending + удаление + форма), `shared/lib/subscriber` (channelLabel/
+  scopeLabel), `MANUAL_SUBSCRIBER_CHANNELS` в shared/api/types, вкладка «Подписчики» в `widgets/page-nav`,
+  роут `/pages/:id/subscribers` в App.tsx. `npm run build` зелёный.
+- **public-ssr (клиентская страница, минимум):** `app/unsubscribe/page.tsx` (force-dynamic) — читает
+  `?token`+`?lang`, вызывает backend `GET /unsubscribe` через `lib/api.unsubscribeByToken`, показывает
+  дружелюбное RU/EN подтверждение (успех/недействителен/нет токена). `next build` зелёный.
+- **worker-email:** ссылка отписки в письме теперь ведёт на public-ssr `/unsubscribe?token=` (а не на
+  `/api/v1/unsubscribe`) — единообразно с ссылкой на `/status/<slug>` (обе от `baseURL`=публичный origin).
+  Сам API-эндпоинт `/unsubscribe` сохранён (его и дёргает страница). **Флаг (прежний):** confirm-ссылка
+  всё ещё на `/api/v1/...`; единый PUBLIC_BASE_URL для прод-разделения origin'ов — отдельная задача (этап 4).
+- **Клиентская самоуправление — минимум (решение человека):** только отписка; просмотр/смена scope по
+  токену отложены (нужны новые эндпоинты get/patch subscription by token — расширение контракта).
+- **Проверено:** интеграционный `subscribers_admin_integration_test` на PG16 (пустой список → создание
+  email confirmed → pending через store виден в списке → дубль 422 → rss 422 → удаление 204 → повтор 404 →
+  изоляция операторов 404 → 401). build (go/admin/next) + go test (вкл. интеграционные) + vet/gofmt/
+  golangci-lint зелёные.
 
 **Этап 3.9 — Slack-канал (написано, юнит + интеграционный на PG16 PASS, ждёт коммита):**
 - **Контракт НЕ менялся.** Эндпоинты `GET /pages/{slug}/subscribe/slack/start` и `GET /subscribe/slack/callback`
@@ -993,3 +1025,12 @@ _Этап 0 — завершён и закоммичен._
   потребляет q.slack. config SLACK_CLIENT_ID/SECRET (пусто→404). Контракт НЕ менялся (эндпоинты+enum уже
   в openapi). Юнит + интеграционный на PG16 PASS; build/test/vet/gofmt/lint зелёные. Флаги: scope=page,
   дубли при повторном Add-to-Slack, callback=JSON. Дальше — 3.10 (управление подписчиками в админке).
+- 2026-06-29 — Этап 3.10 (управление подписчиками + клиентская отписка): контракт расширен с санкции
+  человека (status_page_id в GET /subscribers query + SubscriberCreate + ответ Subscriber; типы
+  перегенерированы). Backend: sqlc ListSubscribersByPage, store, хендлеры list/create(confirmed=true,
+  только push-каналы)/delete, роуты, DTO; интеграционный тест на PG16. Admin (FSD): entities/subscriber,
+  features/subscriber-add, pages/subscribers, вкладка page-nav, роут. public-ssr: /unsubscribe (дружелюбная
+  RU/EN страница, дёргает backend); ссылка отписки в письмах → public-ssr. Решения: ручное добавление
+  минует double opt-in (152-ФЗ на операторе); клиентская страница — минимум (отписка). build (go/admin/
+  next) + test/vet/gofmt/lint зелёные. **Этап 3 закрыт по коду** (email/telegram/slack; MAX отложен).
+  Дальше — Этап 4 (кастомизация/white-label).

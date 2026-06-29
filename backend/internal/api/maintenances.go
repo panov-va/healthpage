@@ -190,6 +190,12 @@ func (s *server) handleCreateMaintenance(w http.ResponseWriter, r *http.Request)
 		writeServerError(w, err)
 		return
 	}
+	// Анонс запланированных работ (DESIGN §8.1 notify.<channel>.maintenance_scheduled).
+	if boolOr(req.Notify, true) {
+		s.emitNotify(func() error {
+			return s.notifier.MaintenanceEvent(r.Context(), created, domain.EventMaintenanceScheduled)
+		})
+	}
 	writeJSON(w, http.StatusCreated, toMaintenanceResponse(created))
 }
 
@@ -210,6 +216,7 @@ func (s *server) handlePatchMaintenance(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	prevStatus := m.Status
 
 	if req.Title != nil {
 		m.Title = *req.Title
@@ -264,7 +271,28 @@ func (s *server) handlePatchMaintenance(w http.ResponseWriter, r *http.Request) 
 		writeServerError(w, err)
 		return
 	}
+	// Уведомляем о начале/окончании работ при фактическом переходе статуса (DESIGN §3.5).
+	if event, ok := maintenanceTransitionEvent(prevStatus, updated.Status); ok {
+		s.emitNotify(func() error { return s.notifier.MaintenanceEvent(r.Context(), updated, event) })
+	}
 	writeJSON(w, http.StatusOK, toMaintenanceResponse(updated))
+}
+
+// maintenanceTransitionEvent возвращает тип уведомления для перехода статуса работ: вход в
+// in_progress → started, в completed → completed. Прочие переходы (в т.ч. отсутствие смены)
+// уведомлений не порождают.
+func maintenanceTransitionEvent(from, to domain.MaintenanceStatus) (domain.EventType, bool) {
+	if from == to {
+		return "", false
+	}
+	switch to {
+	case domain.MaintenanceInProgress:
+		return domain.EventMaintenanceStarted, true
+	case domain.MaintenanceCompleted:
+		return domain.EventMaintenanceCompleted, true
+	default:
+		return "", false
+	}
 }
 
 func (s *server) handleDeleteMaintenance(w http.ResponseWriter, r *http.Request) {

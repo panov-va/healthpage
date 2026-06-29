@@ -212,8 +212,21 @@
       в backend-образе). Dep amqp091-go. Проверено на живом брокере: топология по §8.1
       (list_exchanges/queues/bindings), интеграционный тест confirm/DLX/delayed PASS;
       build/vet/lint + оба образа зелёные. Ждёт коммита.
-- [ ] **3.3** Движок уведомлений: публикация событий (новый инцидент, обновление с notify,
+- [x] **3.3** Движок уведомлений: публикация событий (новый инцидент, обновление с notify,
       старт/конец работ) в очередь; идемпотентность по `Notification.id`; ретраи с backoff; DLQ.
+      — ✅ Контракт НЕ менялся. Домен `subscriber.go` (enum'ы SubscriberChannel/Scope + IsPush +
+      `WantsEvent`) и `notification.go` (NotificationStatus + EventType: incident_new/incident_update/
+      maintenance_scheduled/started/completed). Store `subscribers.go`/`notifications.go` (sqlc):
+      CreateSubscriber/ListConfirmedSubscribers, CreateNotification/NotificationByID/MarkSent/
+      MarkFailed/IncrementAttempts. Пакет `internal/notify`: `Engine` (фан-аут по подтверждённым
+      push-подписчикам с учётом scope/компонентов → запись журнала pending + публикация Message с
+      notification_id), `RetryBackoff` (1м→5м→30м, MaxAttempts=3) + `Engine.Retry` (delayed-републикация
+      или mark failed → DLQ). Врезка в API: create-инцидент (incident_new, только видимый+notify),
+      add-update (incident_update), create-работа (maintenance_scheduled), patch-работа (started/
+      completed по переходу статуса). Движок — мягкая зависимость api (RABBITMQ_URL пуст/недоступен →
+      рассылка off, API работает). Юнит-тесты (домен+движок с фейками), интеграционные на PG16
+      (подписчики/журнал) и живой e2e движок+брокер (фан-аут→q.email с notification_id). build/test/
+      vet/gofmt/golangci-lint зелёные. Ждёт коммита.
 - [ ] **3.4** `worker-email`: SMTP (вкл. кастомный SMTP страницы); double opt-in; отписка по токену.
 - [ ] **3.5** Email-подписка: `POST /pages/{slug}/subscribe`, confirm, unsubscribe.
 - [ ] **3.6** RSS/Atom фид и iCal-фид (публичные эндпоинты).

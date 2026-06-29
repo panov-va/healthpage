@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/domain"
+	"github.com/healthpage/backend/internal/notify"
 	"github.com/healthpage/backend/internal/store"
 )
 
@@ -21,20 +23,22 @@ const (
 type Deps struct {
 	Auth       *auth.Service
 	Store      *store.Store
-	Prod       bool          // влияет на флаг Secure у refresh-cookie
-	RefreshTTL time.Duration // срок жизни refresh-cookie
+	Notifier   *notify.Engine // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
+	Prod       bool           // влияет на флаг Secure у refresh-cookie
+	RefreshTTL time.Duration  // срок жизни refresh-cookie
 }
 
 type server struct {
 	auth       *auth.Service
 	store      *store.Store
+	notifier   *notify.Engine
 	prod       bool
 	refreshTTL time.Duration
 }
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, prod: d.Prod, refreshTTL: d.RefreshTTL}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, prod: d.Prod, refreshTTL: d.RefreshTTL}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -108,6 +112,18 @@ func NewRouter(d Deps) http.Handler {
 // healthz — liveness-проба: отвечает 200, если процесс жив.
 func healthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// emitNotify выполняет рассылку события f, если движок настроен (nil-safe). Ошибки логируются, но
+// не влияют на ответ API — операция над инцидентом/работой уже зафиксирована, а записи журнала
+// остаются pending и восстановимы. Синхронно: для объёмов MVP публикация в брокер дёшева.
+func (s *server) emitNotify(f func() error) {
+	if s.notifier == nil {
+		return
+	}
+	if err := f(); err != nil {
+		log.Printf("notify: dispatch failed: %v", err)
+	}
 }
 
 // ── DTO (синхронны с openapi; конформность закрывается контрактными тестами) ──

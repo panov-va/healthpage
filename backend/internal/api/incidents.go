@@ -208,10 +208,15 @@ func (s *server) handleCreateIncident(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := s.store.CreateIncident(r.Context(), inc, req.Body, boolOr(req.Notify, true))
+	notify := boolOr(req.Notify, true)
+	created, err := s.store.CreateIncident(r.Context(), inc, req.Body, notify)
 	if err != nil {
 		writeServerError(w, err)
 		return
+	}
+	// Уведомляем только о видимом инциденте и только если оператор не отключил рассылку.
+	if notify && created.IsVisible {
+		s.emitNotify(func() error { return s.notifier.IncidentCreated(r.Context(), created, req.Body) })
 	}
 	writeJSON(w, http.StatusCreated, toIncidentResponse(created))
 }
@@ -320,12 +325,16 @@ func (s *server) handleAddIncidentUpdate(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "body обязателен")
 		return
 	}
-	update, _, err := s.store.AddIncidentUpdate(
-		r.Context(), id, status, req.Body, boolOr(req.Notify, true), time.Now().UTC(),
+	notify := boolOr(req.Notify, true)
+	update, updated, err := s.store.AddIncidentUpdate(
+		r.Context(), id, status, req.Body, notify, time.Now().UTC(),
 	)
 	if err != nil {
 		writeServerError(w, err)
 		return
+	}
+	if notify && updated.IsVisible {
+		s.emitNotify(func() error { return s.notifier.IncidentUpdated(r.Context(), updated, update) })
 	}
 	writeJSON(w, http.StatusCreated, toIncidentUpdateResponse(update))
 }

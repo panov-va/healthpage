@@ -372,6 +372,18 @@ type Membership struct {
 	UpdatedAt    time.Time
 }
 
+type Notification struct {
+	ID           uuid.UUID
+	SubscriberID uuid.UUID
+	EventType    string
+	Payload      []byte
+	Status       string
+	Attempts     int32
+	SentAt       *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -404,6 +416,20 @@ type StatusPage struct {
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	DeletedAt      *time.Time
+}
+
+type Subscriber struct {
+	ID               uuid.UUID
+	StatusPageID     uuid.UUID
+	Channel          string
+	Address          string
+	Confirmed        bool
+	ConfirmToken     *string
+	UnsubscribeToken *string
+	Scope            string
+	ComponentIds     []uuid.UUID
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type User struct {

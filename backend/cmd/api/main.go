@@ -16,6 +16,8 @@ import (
 	"github.com/healthpage/backend/internal/api"
 	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/config"
+	"github.com/healthpage/backend/internal/notify"
+	"github.com/healthpage/backend/internal/queue"
 	"github.com/healthpage/backend/internal/security"
 	"github.com/healthpage/backend/internal/store"
 )
@@ -49,11 +51,16 @@ func main() {
 	}
 	authSvc := auth.NewService(st, tokens)
 
+	// Движок уведомлений — мягкая зависимость: без RabbitMQ API работает, но рассылка отключена.
+	notifier, closeQueue := setupNotifier(cfg.RabbitMQURL, st)
+	defer closeQueue()
+
 	srv := &http.Server{
 		Addr: ":" + cfg.HTTPPort,
 		Handler: api.NewRouter(api.Deps{
 			Auth:       authSvc,
 			Store:      st,
+			Notifier:   notifier,
 			Prod:       cfg.IsProd(),
 			RefreshTTL: cfg.RefreshTTL,
 		}),
@@ -80,6 +87,32 @@ func main() {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
 	log.Println("api stopped")
+}
+
+// setupNotifier подключается к RabbitMQ и собирает движок уведомлений. При пустом URL или ошибке
+// подключения возвращает (nil, no-op): API продолжает работать без рассылки (записи журнала не
+// создаются, события просто не публикуются). Возвращает функцию закрытия ресурсов брокера.
+func setupNotifier(rabbitURL string, st *store.Store) (*notify.Engine, func()) {
+	if rabbitURL == "" {
+		log.Println("notify: RABBITMQ_URL не задан — рассылка уведомлений отключена")
+		return nil, func() {}
+	}
+	conn, err := queue.Dial(rabbitURL)
+	if err != nil {
+		log.Printf("notify: не удалось подключиться к RabbitMQ (%v) — рассылка отключена", err)
+		return nil, func() {}
+	}
+	pub, err := queue.NewPublisher(conn)
+	if err != nil {
+		log.Printf("notify: не удалось открыть publisher (%v) — рассылка отключена", err)
+		_ = conn.Close()
+		return nil, func() {}
+	}
+	log.Println("notify: движок уведомлений подключён к RabbitMQ")
+	return notify.New(st, pub, nil), func() {
+		_ = pub.Close()
+		_ = conn.Close()
+	}
 }
 
 // runHealthCheck дёргает локальный /healthz и завершает процесс с кодом 0/1.

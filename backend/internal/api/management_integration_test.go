@@ -106,11 +106,19 @@ func TestManagementIntegration(t *testing.T) {
 		t.Fatalf("status change: got %q", patched.CurrentStatus)
 	}
 
-	// patch page
+	// patch page: имя + брендинг/тема/часовой пояс (этап 4.1)
 	var renamed statusPageResponse
-	patchJSON(t, srv.URL+"/api/v1/pages/"+page.ID, token, map[string]any{"name": "Renamed"}, http.StatusOK, &renamed)
+	patchJSON(t, srv.URL+"/api/v1/pages/"+page.ID, token, map[string]any{
+		"name":     "Renamed",
+		"timezone": "Europe/Moscow",
+		"logo_url": "https://cdn.example.test/logo.png",
+		"theme":    map[string]any{"primary_color": "#2563eb", "mode": "dark"},
+	}, http.StatusOK, &renamed)
 	if renamed.Name != "Renamed" {
 		t.Fatalf("patch page: got %q", renamed.Name)
+	}
+	if renamed.Timezone != "Europe/Moscow" {
+		t.Fatalf("patch page timezone: got %q", renamed.Timezone)
 	}
 
 	// delete child
@@ -132,6 +140,19 @@ func TestManagementIntegration(t *testing.T) {
 	}
 	if len(summary.Groups) != 1 || summary.Groups[0].AggregatedStatus != "major_outage" {
 		t.Fatalf("public summary group: %+v", summary.Groups)
+	}
+	// брендинг страницы в сводке (этап 4.1): публично-безопасное подмножество
+	if summary.Page.Name != "Renamed" || summary.Page.Slug != slug {
+		t.Fatalf("public summary page meta: name=%q slug=%q", summary.Page.Name, summary.Page.Slug)
+	}
+	if summary.Page.Timezone != "Europe/Moscow" || summary.Page.DefaultLocale != "ru" {
+		t.Fatalf("public summary page tz/locale: tz=%q locale=%q", summary.Page.Timezone, summary.Page.DefaultLocale)
+	}
+	if summary.Page.LogoURL == nil || *summary.Page.LogoURL != "https://cdn.example.test/logo.png" {
+		t.Fatalf("public summary page logo: %v", summary.Page.LogoURL)
+	}
+	if string(summary.Page.Theme) == "" || string(summary.Page.Theme) == "{}" {
+		t.Fatalf("public summary page theme empty: %s", summary.Page.Theme)
 	}
 
 	// публичный список компонентов: приватный исключён (остался только parent в группе)

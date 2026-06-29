@@ -5,11 +5,65 @@
   --text: #1b1f24;
   --muted: #656d76;
 
+  /* Акцентный цвет темы (этап 4.1): дефолт — синий; переопределяется inline из theme.primary_color. */
+  --accent: #0969da;
+
   --st-operational: #1a7f37;
   --st-degraded_performance: #bf8700;
   --st-under_maintenance: #0969da;
   --st-partial_outage: #d4670a;
   --st-major_outage: #cf222e;
+}
+
+/* ── Тема страницы (этап 4.1) ── */
+/* Обёртка статус-страницы: несёт переопределённые CSS-переменные темы и закрывает вьюпорт фоном. */
+.page-shell {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* Тёмная тема: data-theme="dark" — всегда; data-theme="auto" — по системной настройке. */
+[data-theme="dark"] {
+  --bg: #0d1117;
+  --card: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+  }
+}
+
+/* Шапка с логотипом и названием страницы. */
+.brand {
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.brand-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand-logo {
+  max-height: 40px;
+  max-width: 200px;
+  width: auto;
+  height: auto;
+}
+.brand-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 * {
@@ -165,8 +219,8 @@ body {
   color: var(--text);
 }
 .tab-active {
-  color: var(--st-under_maintenance);
-  border-bottom-color: var(--st-under_maintenance);
+  color: var(--accent);
+  border-bottom-color: var(--accent);
   font-weight: 600;
 }
 

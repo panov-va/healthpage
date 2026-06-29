@@ -5,11 +5,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "../Badge";
+import { PageShell } from "../PageShell";
 import { Pager } from "../Pager";
 import { StatusTabs } from "../StatusTabs";
-import { fetchIncidents, PageNotFoundError } from "../../../../lib/api";
+import { fetchIncidents, fetchPageMeta, PageNotFoundError } from "../../../../lib/api";
 import { impactColor, incidentStatusColor } from "../../../../lib/badge";
-import { dict, formatUpdatedAt, resolveLocale, withLang } from "../../../../lib/i18n";
+import { buildStatusMetadata } from "../../../../lib/meta";
+import { is12h, parseTheme } from "../../../../lib/theme";
+import { dict, formatInZone, resolveLocale, withLang } from "../../../../lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +21,10 @@ const PER_PAGE = 20;
 interface PageProps {
   params: { slug: string };
   searchParams: { lang?: string | string[]; page?: string | string[] };
+}
+
+export async function generateMetadata({ params }: PageProps) {
+  return buildStatusMetadata(params.slug);
 }
 
 function parsePage(value: string | string[] | undefined): number {
@@ -33,16 +40,23 @@ export default async function IncidentsPage({ params, searchParams }: PageProps)
   const page = parsePage(searchParams.page);
 
   let list;
+  let meta;
   try {
-    list = await fetchIncidents(slug, page, PER_PAGE);
+    [list, meta] = await Promise.all([
+      fetchIncidents(slug, page, PER_PAGE),
+      fetchPageMeta(slug),
+    ]);
   } catch (err) {
     if (err instanceof PageNotFoundError) {
       notFound();
     }
     throw err;
   }
+  const tz = meta.timezone;
+  const hour12 = is12h(parseTheme(meta.theme));
 
   return (
+    <PageShell page={meta} locale={locale}>
     <main className="page">
       <StatusTabs slug={slug} locale={locale} active="incidents" />
       <h1 className="section-title">{t.incidentsTitle}</h1>
@@ -69,9 +83,9 @@ export default async function IncidentsPage({ params, searchParams }: PageProps)
                 </span>
               </div>
               <div className="history-meta">
-                {t.started}: {formatUpdatedAt(inc.started_at, locale)} UTC
+                {t.started}: {formatInZone(inc.started_at, locale, tz, hour12)}
                 {inc.resolved_at
-                  ? ` · ${t.resolved}: ${formatUpdatedAt(inc.resolved_at, locale)} UTC`
+                  ? ` · ${t.resolved}: ${formatInZone(inc.resolved_at, locale, tz, hour12)}`
                   : ""}
               </div>
             </li>
@@ -88,8 +102,7 @@ export default async function IncidentsPage({ params, searchParams }: PageProps)
         prevLabel={t.prevPage}
         nextLabel={t.nextPage}
       />
-
-      <footer className="footer">{t.poweredBy}</footer>
     </main>
+    </PageShell>
   );
 }

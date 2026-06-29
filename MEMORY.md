@@ -14,10 +14,11 @@
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этапы 0–2 закоммичены человеком; Этап 1 закрыт по коду. **Этап 3 (Подписки и уведомления)
 ЗАКРЫТ ПО КОДУ** (3.1–3.7, 3.9, 3.10 готовы, ждут коммита). **3.8 (MAX) ОТЛОЖЕН** (после Этапа 7).
-**Следующий шаг:** Этап 4 — Кастомизация и white-label (DESIGN §3.6): тема/логотип/favicon страницы,
-кастомные домены + верификация, скрытие «Powered by» (премиум), кастомный SMTP/from_email (4.5).
-Начать с 4.1 (см. ROADMAP). Организационно осталось: для 3.7 — `TELEGRAM_BOT_TOKEN` у @BotFather;
-для 3.9 — Slack App + `SLACK_CLIENT_ID/SECRET`, redirect_uri `<BASE_URL>/api/v1/subscribe/slack/callback`.
+**Этап 4 (Кастомизация) — В РАБОТЕ: 4.1 ГОТОВ ПО КОДУ** (тема/тёмный режим/логотип/favicon/таймзона+
+формат времени; ждёт коммита — детали ниже в «Что в работе»). **Следующий шаг:** 4.2 — приватные
+страницы (пароль / список email) + приватные компоненты + noindex (DESIGN §3.2, §3.6).
+Организационно осталось: для 3.7 — `TELEGRAM_BOT_TOKEN` у @BotFather; для 3.9 — Slack App +
+`SLACK_CLIENT_ID/SECRET`, redirect_uri `<BASE_URL>/api/v1/subscribe/slack/callback`.
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -92,6 +93,45 @@
 ---
 
 ## Что в работе
+
+**Этап 4.1 — тема/брендинг/таймзона (написано, build+test+живой e2e PASS, ждёт коммита):**
+- **Контракт расширен с санкции человека:** новая схема `PublicPage` (публично-безопасное
+  подмножество страницы) + поле `page` (required) в `PageSummary`. Поля: name, description, slug,
+  timezone, default_locale, theme, logo_url, favicon_url, hide_powered_by. БЕЗ приватных
+  (account_id/password_hash/smtp_config/custom_domain/redirect_url). Типы перегенерированы (TS+Go),
+  openapi провалиден. **Развилка решена человеком:** встроить page в PageSummary (не отдельный
+  публичный GET) — SSR уже тянет сводку, без второго round-trip.
+- **БД/PATCH уже готовы:** все поля темы (theme jsonb, logo_url, favicon_url, hide_powered_by,
+  redirect_url, timezone, default_locale) есть в `status_pages` с миграции 00003 и персистятся
+  хендлером `PATCH /pages/{id}` — миграция и изменения store НЕ потребовались.
+- **Backend** (`internal/api/public.go`): `publicPageResponse` DTO + `toPublicPageResponse`,
+  наполнение `Page` в `pageSummaryResponse`. Интеграционный тест (`management_integration_test`)
+  расширен: PATCH темы/таймзоны/логотипа → проверка брендинга в публичной сводке. PASS на PG16.
+- **public-ssr:** `lib/theme.ts` (PageTheme: primaryColor/mode/timeFormat; `parseTheme` нормализует
+  публичный jsonb, `themeVars`, `is12h`), `lib/meta.ts` (`buildStatusMetadata` → title=имя,
+  favicon=favicon_url через `generateMetadata`), `lib/api.ts` (+PublicPage, +`fetchPageMeta` —
+  тянет сводку, Next дедуплицирует одинаковый fetch в одном рендере), `formatInZone` в i18n
+  (время в часовом поясе страницы + метка пояса timeZoneName:short; убран хардкод " UTC";
+  невалидный tz → фолбэк UTC). Общий серверный компонент `app/status/[slug]/PageShell.tsx`
+  (обёртка `data-theme` + inline `--accent` + шапка logo/name + футер honor hide_powered_by) —
+  оборачивает ВСЕ вкладки (overview/incidents/incident-detail/maintenances). CSS: `.page-shell`,
+  `.brand*`, тёмная тема через `[data-theme="dark"]` и `@media prefers-color-scheme` для "auto",
+  `.tab-active` → `--accent`.
+- **Структура theme jsonb** (соглашение фронт↔оператор, не нормативный enum): `{primary_color: "#hex",
+  mode: "light"|"dark"|"auto", time_format: "24h"|"12h"}`. layout (макет) — пока единственный,
+  мульти-layout не закладывал (MVP).
+- **Admin (FSD):** `features/page-settings/SettingsForm` (name/description/timezone[Select IANA]/
+  default_locale/акцент[color]/тема[mode]/формат времени/logo_url/favicon_url → PATCH `/pages/{id}`,
+  контракт не меняется; пустой url → null), `pages/page-settings/SettingsPage`, вкладка «Настройки»
+  в `widgets/page-nav`, роут `/pages/:id/settings`. `npm run build` зелёный.
+- **Решения/флаги:** (1) тумблер `hide_powered_by` в админке — задача 4.4 (white-label premium);
+  публичный рендер уже его учитывает (футер скрывается). (2) redirect_url — не в 4.1, в page-мету
+  не выводил. (3) часовой пояс — Select из ~16 IANA-зон + текущее значение; свободный ввод не делал.
+- **Проверено:** go build/test(+интеграц.)/vet/gofmt/golangci-lint зелёные; admin `npm run build` +
+  public-ssr `next build` зелёные; **живой e2e** (свежий api :8081 + `next start`): сводка отдаёт
+  page; рендер — data-theme="dark", brand-name, logo src, `--accent:#e11d48`, `<title>`, favicon
+  rel=icon, время GMT+3 + 12h(PM), футер «Работает на HealthPage»; брендинг на вкладке инцидентов;
+  white-label (hide_powered_by=true) скрывает футер, mode=light → data-theme="light".
 
 **Этап 3.2 — топология RabbitMQ (написано и проверено на живом брокере, ждёт коммита):**
 - **Образ брокера** `docker/rabbitmq/Dockerfile`: `rabbitmq:3.13-management-alpine` + community-плагин

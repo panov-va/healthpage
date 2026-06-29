@@ -1695,11 +1695,29 @@ components:
           items: { type: string }
 
     # ── публичная сводка ──
+    # Публично-безопасное подмножество StatusPage для рендера публичной страницы
+    # (брендинг/тема/часовой пояс). Без приватных полей (password_hash, smtp_config,
+    # account_id, custom_domain/domain_verified, redirect_url и т.п.).
+    PublicPage:
+      type: object
+      required: [name, slug, timezone, default_locale]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        slug: { type: string }
+        timezone: { type: string }
+        default_locale: { type: string }
+        theme: { type: object, additionalProperties: true }
+        logo_url: { type: [string, "null"] }
+        favicon_url: { type: [string, "null"] }
+        hide_powered_by: { type: boolean }
+
     PageSummary:
       type: object
-      required: [overall_status, groups]
+      required: [overall_status, groups, page]
       properties:
         overall_status: { $ref: '#/components/schemas/OverallStatus' }
+        page: { $ref: '#/components/schemas/PublicPage' }
         updated_at: { type: string, format: date-time }
         groups:
           type: array

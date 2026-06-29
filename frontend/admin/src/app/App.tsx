@@ -5,6 +5,7 @@ import { IncidentDetailPage, IncidentsListPage } from "@/pages/incidents";
 import { LoginPage } from "@/pages/login";
 import { MaintenanceDetailPage, MaintenancesListPage } from "@/pages/maintenances";
 import { PageDetailPage } from "@/pages/page-detail";
+import { SettingsPage } from "@/pages/page-settings";
 import { PagesListPage } from "@/pages/pages-list";
 import { SubscribersPage } from "@/pages/subscribers";
 import { TemplatesPage } from "@/pages/templates";
@@ -47,6 +48,7 @@ export function App() {
             />
             <Route path="/pages/:id/templates" element={<TemplatesPage />} />
             <Route path="/pages/:id/subscribers" element={<SubscribersPage />} />
+            <Route path="/pages/:id/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

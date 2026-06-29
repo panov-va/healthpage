@@ -6,15 +6,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "../../Badge";
+import { PageShell } from "../../PageShell";
 import { StatusTabs } from "../../StatusTabs";
 import {
   componentNameMap,
   fetchComponents,
   fetchIncident,
+  fetchPageMeta,
   PageNotFoundError,
 } from "../../../../../lib/api";
 import { impactColor, incidentStatusColor } from "../../../../../lib/badge";
-import { dict, formatUpdatedAt, resolveLocale, withLang } from "../../../../../lib/i18n";
+import { buildStatusMetadata } from "../../../../../lib/meta";
+import { is12h, parseTheme } from "../../../../../lib/theme";
+import { dict, formatInZone, resolveLocale, withLang } from "../../../../../lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -23,26 +27,35 @@ interface PageProps {
   searchParams: { lang?: string | string[] };
 }
 
+export async function generateMetadata({ params }: PageProps) {
+  return buildStatusMetadata(params.slug);
+}
+
 export default async function IncidentDetailPage({ params, searchParams }: PageProps) {
   const locale = resolveLocale(searchParams.lang);
   const t = dict(locale);
   const { slug, id } = params;
 
   let incident;
+  let meta;
   let names: Record<string, string> = {};
   try {
-    const [inc, comps] = await Promise.all([
+    const [inc, comps, m] = await Promise.all([
       fetchIncident(slug, id),
       fetchComponents(slug),
+      fetchPageMeta(slug),
     ]);
     incident = inc;
     names = componentNameMap(comps);
+    meta = m;
   } catch (err) {
     if (err instanceof PageNotFoundError) {
       notFound();
     }
     throw err;
   }
+  const tz = meta.timezone;
+  const hour12 = is12h(parseTheme(meta.theme));
 
   // Хроника: новые сверху.
   const updates = [...incident.updates].sort(
@@ -50,6 +63,7 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
   );
 
   return (
+    <PageShell page={meta} locale={locale}>
     <main className="page">
       <StatusTabs slug={slug} locale={locale} active="incidents" />
       <Link
@@ -68,9 +82,9 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
         />
       </div>
       <div className="history-meta" style={{ marginTop: 8 }}>
-        {t.started}: {formatUpdatedAt(incident.started_at, locale)} UTC
+        {t.started}: {formatInZone(incident.started_at, locale, tz, hour12)}
         {incident.resolved_at
-          ? ` · ${t.resolved}: ${formatUpdatedAt(incident.resolved_at, locale)} UTC`
+          ? ` · ${t.resolved}: ${formatInZone(incident.resolved_at, locale, tz, hour12)}`
           : ""}
       </div>
 
@@ -113,7 +127,7 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
                   color={incidentStatusColor(u.status)}
                 />
                 <span className="timeline-time">
-                  {formatUpdatedAt(u.created_at, locale)} UTC
+                  {formatInZone(u.created_at, locale, tz, hour12)}
                 </span>
               </div>
               <p className="timeline-body">{u.body}</p>
@@ -130,8 +144,7 @@ export default async function IncidentDetailPage({ params, searchParams }: PageP
           <p className="postmortem">{incident.postmortem}</p>
         </section>
       ) : null}
-
-      <footer className="footer">{t.poweredBy}</footer>
     </main>
+    </PageShell>
   );
 }

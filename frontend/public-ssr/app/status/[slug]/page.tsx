@@ -6,15 +6,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "./Badge";
+import { PageShell } from "./PageShell";
 import { StatusTabs } from "./StatusTabs";
 import { fetchPageSummary, PageNotFoundError } from "../../../lib/api";
 import type { ApiComponent, ComponentStatus } from "../../../lib/api";
 import { impactColor, maintenanceStatusColor } from "../../../lib/badge";
+import { buildStatusMetadata } from "../../../lib/meta";
+import { is12h, parseTheme } from "../../../lib/theme";
 import { buildTree } from "../../../lib/tree";
 import type { ComponentNode } from "../../../lib/tree";
 import {
   dict,
-  formatUpdatedAt,
+  formatInZone,
   resolveLocale,
   withLang,
 } from "../../../lib/i18n";
@@ -26,6 +29,10 @@ export const dynamic = "force-dynamic";
 interface PageProps {
   params: { slug: string };
   searchParams: { lang?: string | string[] };
+}
+
+export async function generateMetadata({ params }: PageProps) {
+  return buildStatusMetadata(params.slug);
 }
 
 function StatusBadge({ status, label }: { status: ComponentStatus; label: string }) {
@@ -100,13 +107,16 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
   const hasComponents =
     summary.groups.length > 0 || summary.ungrouped_components.length > 0;
   const slug = params.slug;
+  const tz = summary.page.timezone;
+  const hour12 = is12h(parseTheme(summary.page.theme));
 
   return (
+    <PageShell page={summary.page} locale={locale}>
     <main className="page">
       <section className={`overall bg-${summary.overall_status}`}>
         <h1>{t.overall[summary.overall_status]}</h1>
         <div className="updated">
-          {t.updatedAt}: {formatUpdatedAt(summary.updated_at, locale)} UTC
+          {t.updatedAt}: {formatInZone(summary.updated_at, locale, tz, hour12)}
         </div>
       </section>
 
@@ -127,7 +137,7 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
                   >
                     <span>{inc.title}</span>
                     <span className="desc">
-                      {t.started}: {formatUpdatedAt(inc.started_at, locale)} UTC
+                      {t.started}: {formatInZone(inc.started_at, locale, tz, hour12)}
                     </span>
                   </Link>
                   <span className="badges">
@@ -155,8 +165,8 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
                   <span className="component-name">
                     <span>{m.title}</span>
                     <span className="desc">
-                      {t.scheduledWindow}: {formatUpdatedAt(m.scheduled_start, locale)} —{" "}
-                      {formatUpdatedAt(m.scheduled_end, locale)} UTC
+                      {t.scheduledWindow}: {formatInZone(m.scheduled_start, locale, tz, hour12)} —{" "}
+                      {formatInZone(m.scheduled_end, locale, tz, hour12)}
                     </span>
                   </span>
                   <Badge
@@ -197,8 +207,7 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
       ) : (
         <p className="empty">{t.noComponents}</p>
       )}
-
-      <footer className="footer">{t.poweredBy}</footer>
     </main>
+    </PageShell>
   );
 }

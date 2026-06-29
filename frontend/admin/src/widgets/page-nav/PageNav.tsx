@@ -1,12 +1,14 @@
 import { NavLink } from "react-router-dom";
 
-// Подвигация разделов страницы статуса (компоненты / инциденты / работы / шаблоны / подписчики).
+// Подвигация разделов страницы статуса (компоненты / инциденты / работы / шаблоны /
+// подписчики / настройки).
 const tabs = [
   { to: "", label: "Компоненты", end: true },
   { to: "incidents", label: "Инциденты", end: false },
   { to: "maintenances", label: "Работы", end: false },
   { to: "templates", label: "Шаблоны", end: false },
   { to: "subscribers", label: "Подписчики", end: false },
+  { to: "settings", label: "Настройки", end: false },
 ];
 
 export function PageNav({ pageId }: { pageId: string }) {

@@ -6,16 +6,20 @@
 import { notFound } from "next/navigation";
 
 import { Badge } from "../Badge";
+import { PageShell } from "../PageShell";
 import { Pager } from "../Pager";
 import { StatusTabs } from "../StatusTabs";
 import {
   componentNameMap,
   fetchComponents,
   fetchMaintenances,
+  fetchPageMeta,
   PageNotFoundError,
 } from "../../../../lib/api";
 import { maintenanceStatusColor } from "../../../../lib/badge";
-import { dict, formatUpdatedAt, resolveLocale } from "../../../../lib/i18n";
+import { buildStatusMetadata } from "../../../../lib/meta";
+import { is12h, parseTheme } from "../../../../lib/theme";
+import { dict, formatInZone, resolveLocale } from "../../../../lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +28,10 @@ const PER_PAGE = 20;
 interface PageProps {
   params: { slug: string };
   searchParams: { lang?: string | string[]; page?: string | string[] };
+}
+
+export async function generateMetadata({ params }: PageProps) {
+  return buildStatusMetadata(params.slug);
 }
 
 function parsePage(value: string | string[] | undefined): number {
@@ -39,22 +47,28 @@ export default async function MaintenancesPage({ params, searchParams }: PagePro
   const page = parsePage(searchParams.page);
 
   let list;
+  let meta;
   let names: Record<string, string> = {};
   try {
-    const [ml, comps] = await Promise.all([
+    const [ml, comps, m] = await Promise.all([
       fetchMaintenances(slug, page, PER_PAGE),
       fetchComponents(slug),
+      fetchPageMeta(slug),
     ]);
     list = ml;
     names = componentNameMap(comps);
+    meta = m;
   } catch (err) {
     if (err instanceof PageNotFoundError) {
       notFound();
     }
     throw err;
   }
+  const tz = meta.timezone;
+  const hour12 = is12h(parseTheme(meta.theme));
 
   return (
+    <PageShell page={meta} locale={locale}>
     <main className="page">
       <StatusTabs slug={slug} locale={locale} active="maintenances" />
       <h1 className="section-title">{t.maintenancesTitle}</h1>
@@ -77,8 +91,8 @@ export default async function MaintenancesPage({ params, searchParams }: PagePro
               </div>
               <div className="maint-body">
                 <div className="history-meta">
-                  {t.scheduledWindow}: {formatUpdatedAt(m.scheduled_start, locale)} —{" "}
-                  {formatUpdatedAt(m.scheduled_end, locale)} UTC
+                  {t.scheduledWindow}: {formatInZone(m.scheduled_start, locale, tz, hour12)} —{" "}
+                  {formatInZone(m.scheduled_end, locale, tz, hour12)}
                 </div>
                 {m.description ? <p className="maint-desc">{m.description}</p> : null}
                 {m.component_ids.length > 0 ? (
@@ -93,7 +107,7 @@ export default async function MaintenancesPage({ params, searchParams }: PagePro
                       <li key={u.id} className="timeline-item">
                         <div className="timeline-head">
                           <span className="timeline-time">
-                            {formatUpdatedAt(u.created_at, locale)} UTC
+                            {formatInZone(u.created_at, locale, tz, hour12)}
                           </span>
                         </div>
                         <p className="timeline-body">{u.body}</p>
@@ -116,8 +130,7 @@ export default async function MaintenancesPage({ params, searchParams }: PagePro
         prevLabel={t.prevPage}
         nextLabel={t.nextPage}
       />
-
-      <footer className="footer">{t.poweredBy}</footer>
     </main>
+    </PageShell>
   );
 }

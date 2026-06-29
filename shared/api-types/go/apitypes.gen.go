@@ -500,6 +500,7 @@ type PageSummary struct {
 	ActiveMaintenances  *[]Maintenance   `json:"active_maintenances,omitempty"`
 	Groups              []ComponentGroup `json:"groups"`
 	OverallStatus       OverallStatus    `json:"overall_status"`
+	Page                PublicPage       `json:"page"`
 	UngroupedComponents *[]Component     `json:"ungrouped_components,omitempty"`
 	UpdatedAt           *time.Time       `json:"updated_at,omitempty"`
 }
@@ -531,6 +532,19 @@ type PaymentProvider string
 
 // PaymentStatus defines model for PaymentStatus.
 type PaymentStatus string
+
+// PublicPage defines model for PublicPage.
+type PublicPage struct {
+	DefaultLocale string                  `json:"default_locale"`
+	Description   *string                 `json:"description,omitempty"`
+	FaviconUrl    *string                 `json:"favicon_url"`
+	HidePoweredBy *bool                   `json:"hide_powered_by,omitempty"`
+	LogoUrl       *string                 `json:"logo_url"`
+	Name          string                  `json:"name"`
+	Slug          string                  `json:"slug"`
+	Theme         *map[string]interface{} `json:"theme,omitempty"`
+	Timezone      string                  `json:"timezone"`
+}
 
 // RefreshRequest defines model for RefreshRequest.
 type RefreshRequest struct {

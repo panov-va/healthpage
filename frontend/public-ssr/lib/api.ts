@@ -102,8 +102,23 @@ export interface MaintenanceList {
   pagination: Pagination;
 }
 
+// PublicPage — публично-безопасное подмножество страницы (openapi PublicPage):
+// брендинг/тема/часовой пояс. Приходит внутри PageSummary.
+export interface PublicPage {
+  name: string;
+  description: string;
+  slug: string;
+  timezone: string;
+  default_locale: string;
+  theme: Record<string, unknown>;
+  logo_url: string | null;
+  favicon_url: string | null;
+  hide_powered_by: boolean;
+}
+
 export interface PageSummary {
   overall_status: ComponentStatus;
+  page: PublicPage;
   updated_at: string;
   groups: ApiGroup[];
   ungrouped_components: ApiComponent[];
@@ -137,6 +152,13 @@ async function getJSON<T>(path: string): Promise<T> {
 
 export async function fetchPageSummary(slug: string): Promise<PageSummary> {
   return getJSON<PageSummary>(`/pages/${encodeURIComponent(slug)}/summary`);
+}
+
+// fetchPageMeta возвращает брендинг страницы (PublicPage) для оформления вложенных вкладок
+// (инциденты/работы) и метаданных. Под капотом тянет сводку — Next дедуплицирует одинаковый
+// GET в пределах одного рендера, поэтому повторного сетевого запроса не возникает.
+export async function fetchPageMeta(slug: string): Promise<PublicPage> {
+  return (await fetchPageSummary(slug)).page;
 }
 
 // fetchComponents — публичный список компонентов (для маппинга id → имя в инцидентах/работах;

@@ -2787,8 +2787,22 @@ export interface components {
             token: string;
             scopes?: string[];
         };
+        PublicPage: {
+            name: string;
+            description?: string;
+            slug: string;
+            timezone: string;
+            default_locale: string;
+            theme?: {
+                [key: string]: unknown;
+            };
+            logo_url?: string | null;
+            favicon_url?: string | null;
+            hide_powered_by?: boolean;
+        };
         PageSummary: {
             overall_status: components["schemas"]["OverallStatus"];
+            page: components["schemas"]["PublicPage"];
             /** Format: date-time */
             updated_at?: string;
             groups: components["schemas"]["ComponentGroup"][];

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -21,8 +22,42 @@ type publicGroupResponse struct {
 	Components       []componentResponse `json:"components"`
 }
 
+// publicPageResponse — публично-безопасное подмножество страницы (openapi PublicPage):
+// брендинг/тема/часовой пояс, без приватных полей (account_id, password_hash, smtp_config,
+// custom_domain, redirect_url и т.п.).
+type publicPageResponse struct {
+	Name          string          `json:"name"`
+	Description   string          `json:"description"`
+	Slug          string          `json:"slug"`
+	Timezone      string          `json:"timezone"`
+	DefaultLocale string          `json:"default_locale"`
+	Theme         json.RawMessage `json:"theme"`
+	LogoURL       *string         `json:"logo_url"`
+	FaviconURL    *string         `json:"favicon_url"`
+	HidePoweredBy bool            `json:"hide_powered_by"`
+}
+
+func toPublicPageResponse(p domain.StatusPage) publicPageResponse {
+	theme := p.Theme
+	if len(theme) == 0 {
+		theme = []byte("{}")
+	}
+	return publicPageResponse{
+		Name:          p.Name,
+		Description:   p.Description,
+		Slug:          p.Slug,
+		Timezone:      p.Timezone,
+		DefaultLocale: p.DefaultLocale,
+		Theme:         json.RawMessage(theme),
+		LogoURL:       p.LogoURL,
+		FaviconURL:    p.FaviconURL,
+		HidePoweredBy: p.HidePoweredBy,
+	}
+}
+
 type pageSummaryResponse struct {
 	OverallStatus       string                `json:"overall_status"`
+	Page                publicPageResponse    `json:"page"`
 	UpdatedAt           string                `json:"updated_at"`
 	Groups              []publicGroupResponse `json:"groups"`
 	UngroupedComponents []componentResponse   `json:"ungrouped_components"`
@@ -81,6 +116,7 @@ func (s *server) handlePublicSummary(w http.ResponseWriter, r *http.Request) {
 
 	resp := pageSummaryResponse{
 		OverallStatus:       string(summary.OverallStatus),
+		Page:                toPublicPageResponse(page),
 		UpdatedAt:           summaryUpdatedAt(page, components).UTC().Format(time.RFC3339),
 		Groups:              make([]publicGroupResponse, len(summary.Groups)),
 		UngroupedComponents: toComponentResponses(summary.Ungrouped),

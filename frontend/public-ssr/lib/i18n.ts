@@ -277,14 +277,33 @@ export function landing(locale: Locale): LandingDict {
   return landingDicts[locale];
 }
 
-export function formatUpdatedAt(iso: string, locale: Locale): string {
+// formatInZone форматирует ISO-время в часовом поясе страницы (этап 4.1). Метка пояса
+// (timeZoneName: short, напр. «GMT+3»/«MSK») включена в вывод — отдельный суффикс не нужен.
+// Невалидный пояс (operator ввёл мусор) → фолбэк на UTC, чтобы рендер не падал.
+export function formatInZone(
+  iso: string,
+  locale: Locale,
+  timeZone: string,
+  hour12: boolean,
+): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) {
     return iso;
   }
-  return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "ru-RU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  }).format(d);
+  const opts: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12,
+    timeZoneName: "short",
+    timeZone,
+  };
+  const lang = locale === "en" ? "en-GB" : "ru-RU";
+  try {
+    return new Intl.DateTimeFormat(lang, opts).format(d);
+  } catch {
+    return new Intl.DateTimeFormat(lang, { ...opts, timeZone: "UTC" }).format(d);
+  }
 }

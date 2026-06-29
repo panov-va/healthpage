@@ -2,16 +2,21 @@
 // Тянет GET /pages/{slug}/summary, рендерит общий статус + дерево компонентов и групп.
 // Работает независимо от админки. Инциденты/работы — этап 2 (в сводке пока пусты).
 
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { Badge } from "./Badge";
+import { StatusTabs } from "./StatusTabs";
 import { fetchPageSummary, PageNotFoundError } from "../../../lib/api";
 import type { ApiComponent, ComponentStatus } from "../../../lib/api";
+import { impactColor, maintenanceStatusColor } from "../../../lib/badge";
 import { buildTree } from "../../../lib/tree";
 import type { ComponentNode } from "../../../lib/tree";
 import {
   dict,
   formatUpdatedAt,
   resolveLocale,
+  withLang,
 } from "../../../lib/i18n";
 import type { Locale } from "../../../lib/i18n";
 
@@ -94,6 +99,7 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
 
   const hasComponents =
     summary.groups.length > 0 || summary.ungrouped_components.length > 0;
+  const slug = params.slug;
 
   return (
     <main className="page">
@@ -103,6 +109,66 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
           {t.updatedAt}: {formatUpdatedAt(summary.updated_at, locale)} UTC
         </div>
       </section>
+
+      <StatusTabs slug={slug} locale={locale} active="overview" />
+
+      {summary.active_incidents.length > 0 ? (
+        <section className="group">
+          <div className="group-header">
+            <span>{t.incidentsTitle}</span>
+          </div>
+          <ul className="components">
+            {summary.active_incidents.map((inc) => (
+              <li key={inc.id}>
+                <div className="component">
+                  <Link
+                    className="component-name"
+                    href={withLang(`/status/${encodeURIComponent(slug)}/incidents/${inc.id}`, locale)}
+                  >
+                    <span>{inc.title}</span>
+                    <span className="desc">
+                      {t.started}: {formatUpdatedAt(inc.started_at, locale)} UTC
+                    </span>
+                  </Link>
+                  <span className="badges">
+                    <Badge label={t.impact[inc.impact]} color={impactColor(inc.impact)} />
+                    <span className={`status st-${"degraded_performance"}`}>
+                      {t.incidentStatus[inc.current_status]}
+                    </span>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {summary.active_maintenances.length > 0 ? (
+        <section className="group">
+          <div className="group-header">
+            <span>{t.maintenancesTitle}</span>
+          </div>
+          <ul className="components">
+            {summary.active_maintenances.map((m) => (
+              <li key={m.id}>
+                <div className="component">
+                  <span className="component-name">
+                    <span>{m.title}</span>
+                    <span className="desc">
+                      {t.scheduledWindow}: {formatUpdatedAt(m.scheduled_start, locale)} —{" "}
+                      {formatUpdatedAt(m.scheduled_end, locale)} UTC
+                    </span>
+                  </span>
+                  <Badge
+                    label={t.maintenanceStatus[m.status]}
+                    color={maintenanceStatusColor(m.status)}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {hasComponents ? (
         <>

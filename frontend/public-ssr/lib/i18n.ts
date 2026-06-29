@@ -2,7 +2,12 @@
 // Локаль определяется query-параметром ?lang=en (дефолт — ru). Полноценный i18n
 // (по default_locale страницы, Accept-Language) — отдельная задача кастомизации.
 
-import type { ComponentStatus } from "./api";
+import type {
+  ComponentStatus,
+  IncidentImpact,
+  IncidentStatus,
+  MaintenanceStatus,
+} from "./api";
 
 export type Locale = "ru" | "en";
 
@@ -21,6 +26,26 @@ interface Dict {
   notFoundTitle: string;
   notFoundBody: string;
   poweredBy: string;
+
+  // Вкладки и разделы инцидентов/работ (этап 2.10).
+  tabs: { overview: string; incidents: string; maintenances: string };
+  incidentStatus: Record<IncidentStatus, string>;
+  impact: Record<IncidentImpact, string>;
+  maintenanceStatus: Record<MaintenanceStatus, string>;
+  incidentsTitle: string;
+  maintenancesTitle: string;
+  noIncidents: string;
+  noMaintenances: string;
+  impactLabel: string;
+  started: string;
+  resolved: string;
+  scheduledWindow: string;
+  affectedComponents: string;
+  postmortem: string;
+  updatesTitle: string;
+  openIncident: string;
+  prevPage: string;
+  nextPage: string;
 }
 
 const ru: Dict = {
@@ -43,6 +68,39 @@ const ru: Dict = {
   notFoundTitle: "Страница не найдена",
   notFoundBody: "Запрашиваемая страница статуса не существует или недоступна.",
   poweredBy: "Работает на HealthPage",
+
+  tabs: { overview: "Статус", incidents: "Инциденты", maintenances: "Плановые работы" },
+  incidentStatus: {
+    investigating: "Расследуем",
+    identified: "Причина найдена",
+    monitoring: "Наблюдаем",
+    resolved: "Решён",
+  },
+  impact: {
+    none: "Без влияния",
+    minor: "Незначительное",
+    major: "Существенное",
+    critical: "Критическое",
+  },
+  maintenanceStatus: {
+    scheduled: "Запланированы",
+    in_progress: "Идут",
+    completed: "Завершены",
+  },
+  incidentsTitle: "Инциденты",
+  maintenancesTitle: "Плановые работы",
+  noIncidents: "Инцидентов пока не было.",
+  noMaintenances: "Плановых работ пока нет.",
+  impactLabel: "Влияние",
+  started: "Начало",
+  resolved: "Решён",
+  scheduledWindow: "Запланировано",
+  affectedComponents: "Затронутые компоненты",
+  postmortem: "Постмортем",
+  updatesTitle: "Хроника обновлений",
+  openIncident: "Подробнее",
+  prevPage: "← Новее",
+  nextPage: "Старее →",
 };
 
 const en: Dict = {
@@ -65,12 +123,50 @@ const en: Dict = {
   notFoundTitle: "Page not found",
   notFoundBody: "The requested status page does not exist or is unavailable.",
   poweredBy: "Powered by HealthPage",
+
+  tabs: { overview: "Status", incidents: "Incidents", maintenances: "Maintenance" },
+  incidentStatus: {
+    investigating: "Investigating",
+    identified: "Identified",
+    monitoring: "Monitoring",
+    resolved: "Resolved",
+  },
+  impact: {
+    none: "No impact",
+    minor: "Minor",
+    major: "Major",
+    critical: "Critical",
+  },
+  maintenanceStatus: {
+    scheduled: "Scheduled",
+    in_progress: "In progress",
+    completed: "Completed",
+  },
+  incidentsTitle: "Incidents",
+  maintenancesTitle: "Scheduled maintenance",
+  noIncidents: "No incidents reported yet.",
+  noMaintenances: "No scheduled maintenance yet.",
+  impactLabel: "Impact",
+  started: "Started",
+  resolved: "Resolved",
+  scheduledWindow: "Scheduled",
+  affectedComponents: "Affected components",
+  postmortem: "Postmortem",
+  updatesTitle: "Update history",
+  openIncident: "Details",
+  prevPage: "← Newer",
+  nextPage: "Older →",
 };
 
 const dicts: Record<Locale, Dict> = { ru, en };
 
 export function dict(locale: Locale): Dict {
   return dicts[locale];
+}
+
+// withLang добавляет к пути ?lang=en, чтобы локаль не терялась при переходах (дефолт ru — без параметра).
+export function withLang(path: string, locale: Locale): string {
+  return locale === "en" ? `${path}?lang=en` : path;
 }
 
 // ── Лендинг (SSR для SEO) ──

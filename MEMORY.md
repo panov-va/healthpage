@@ -13,11 +13,12 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-Задачи 1.1–1.10 + фикс main.go + **2.1–2.9 + админские read-эндпоинты инцидентов/работ** написаны
-и проверены, ждут коммита человеком.
-**Следующий шаг:** Этап 2.10 — публичный SSR (`public-ssr`): вкладки «Инциденты» и «Плановые работы»
-+ детальные страницы. Эндпоинты публичные (`/pages/{slug}/incidents`, `/incidents/{id}`,
-`/maintenances`) уже готовы (2.8). Затем этап 3 (подписки/уведомления).
+**Фаза:** Этап 2 (Инциденты и работы) — **закрыт по коду** (2.1–2.10 + админские read-эндпоинты).
+Задачи 1.1–1.10 + фикс main.go + **2.1–2.10 + админские read-эндпоинты** написаны и проверены,
+ждут коммита человеком.
+**Следующий шаг:** Этап 3 — подписки и уведомления (DESIGN §3.5, §4.1, §4.4, §8.1): миграции
+Subscriber/Notification, RabbitMQ-топология, движок уведомлений, worker'ы (email/telegram/max/slack),
+RSS/iCal, double opt-in. Начать с 3.1 (миграции Subscriber+Notification).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -92,6 +93,31 @@
 ---
 
 ## Что в работе
+
+**Этап 2.10 — публичный SSR: вкладки Инциденты/Работы + детальные страницы (написано, `next build` зелёный, e2e на живом стеке PASS, ждёт коммита):**
+- **Контракт НЕ менялся** — используются публичные эндпоинты 2.8 (`/pages/{slug}/incidents`,
+  `/incidents/{id}`, `/maintenances`, `/components`). Только `frontend/public-ssr`.
+- **lib/api.ts:** типы `ApiIncident`/`ApiIncidentUpdate`/`ApiIncidentComponent`/`ApiMaintenance`/
+  `ApiMaintenanceUpdate`/`Pagination`/`IncidentList`/`MaintenanceList`; `PageSummary.active_*` теперь
+  типизированы. Общий `getJSON` (404→PageNotFoundError). Функции `fetchIncidents`/`fetchIncident`/
+  `fetchMaintenances`/`fetchComponents` + `componentNameMap` (id→имя; приватные компоненты API не отдаёт).
+- **lib/i18n.ts:** расширен Dict (tabs, incidentStatus/impact/maintenanceStatus, заголовки, noIncidents/
+  noMaintenances, started/resolved/scheduledWindow/affectedComponents/postmortem/updatesTitle/пагинация)
+  RU+EN; хелпер `withLang` (сохраняет `?lang=en` в ссылках). **lib/badge.ts:** цвета impact/incident/
+  maintenance поверх `--st-*`.
+- **Компоненты** (server): `StatusTabs` (Статус/Инциденты/Работы, подсветка активной, сохранение локали),
+  `Badge` (пилюля с точкой), `Pager` (новее/старее, сохраняет page+lang).
+- **Страницы:** `/status/[slug]` дополнена секциями активных инцидентов/работ из сводки + вкладки;
+  `/status/[slug]/incidents` (список + пагинация, ссылки на detail); `/status/[slug]/incidents/[id]`
+  (detail: бейджи impact/статус, затронутые компоненты с именами + их статус-в-инциденте, **хроника
+  обновлений новые-сверху**, постмортем; скрытый/несуществующий → 404); `/status/[slug]/maintenances`
+  (карточки: окно, описание, компоненты по именам, лента обновлений inline — публичного GET одной работы
+  нет, список отдаёт работы полными). Все force-dynamic. CSS в globals.css (tabs/badge/history/timeline/
+  pager/maint).
+- **Проверка:** `next build` зелёный (4 динамических роута). e2e на живом api+PG (seed: resolved-инцидент с
+  3 обновлениями+постмортем, активный инцидент, in_progress-работа с заметкой): обзор показывает активные;
+  список инцидентов RU; detail — лента+постмортем+компоненты; работы — окно+описание+лента; EN-локаль;
+  404 для неизвестного slug и скрытого/несуществующего инцидента. **Этап 2 закрыт по коду.**
 
 **Админские read-эндпоинты инцидентов/работ (контракт расширен с санкции человека; написано, тесты PASS, ждёт коммита):**
 - **Контракт (openapi.yaml):** добавлены `GET /incidents` (tag Incidents; query `status_page_id`+`status`+
@@ -671,3 +697,10 @@ _Этап 0 — завершён и закоммичен._
   без slug; detail работы — прямой GET). Закрыт флаг 2.9 (скрытые инциденты теперь доступны оператору).
   Интеграционные тесты расширены, PASS на PG16; build/vet/lint/admin-build зелёные; e2e-смоук PASS.
   Дальше — 2.10 (публичный SSR вкладки Инциденты/Работы + detail).
+- 2026-06-29 — Этап 2.10 (публичный SSR): вкладки Статус/Инциденты/Работы (`StatusTabs`), страницы
+  `/status/[slug]/incidents` (список+пагинация), `/incidents/[id]` (detail: лента новые-сверху, постмортем,
+  затронутые компоненты по именам), `/maintenances` (карточки с лентой inline); обзор дополнен активными
+  инцидентами/работами. lib/api (типы+fetch'еры+componentNameMap), i18n RU/EN+withLang, lib/badge, CSS.
+  Контракт не менялся (эндпоинты 2.8). `next build` зелёный, e2e на живом стеке PASS (RU/EN, постмортем,
+  404). **Этап 2 закрыт по коду.** Дальше — этап 3 (подписки/уведомления), начать с 3.1 (миграции
+  Subscriber+Notification).

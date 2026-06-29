@@ -146,6 +146,169 @@ body {
   color: var(--muted);
 }
 
+/* ── Вкладки (статус / инциденты / работы) ── */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  padding: 10px 16px;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 0.95rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab-active {
+  color: var(--st-under_maintenance);
+  border-bottom-color: var(--st-under_maintenance);
+  font-weight: 600;
+}
+
+.section-title {
+  font-size: 1.4rem;
+  margin: 0 0 16px;
+}
+.back-link {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+.back-link:hover {
+  color: var(--text);
+}
+
+/* ── Бейдж-пилюля ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  background: var(--card);
+}
+.badge-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Список истории инцидентов ── */
+.history {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.history-item {
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+}
+.history-item:first-child {
+  border-top: none;
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.history-title {
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text);
+}
+.history-title:hover {
+  color: var(--st-under_maintenance);
+}
+.history-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ── Карточка работ / детали ── */
+.maint-body {
+  padding: 14px 16px;
+}
+.maint-desc {
+  margin: 8px 0;
+  white-space: pre-wrap;
+}
+.maint-components {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+/* ── Хроника обновлений ── */
+.timeline {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.timeline-item {
+  padding-left: 14px;
+  border-left: 2px solid var(--border);
+  padding-bottom: 14px;
+}
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+.timeline-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.timeline-time {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.timeline-body {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.postmortem {
+  padding: 14px 16px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ── Пагинация ── */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.pager-info {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 /* ── Лендинг ── */
 .landing {
   max-width: 920px;

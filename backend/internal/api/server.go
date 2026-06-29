@@ -24,6 +24,7 @@ type Deps struct {
 	Auth       *auth.Service
 	Store      *store.Store
 	Notifier   *notify.Engine // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
+	SubSecret  string         // секрет HMAC-токенов отписки (должен совпадать с worker-email)
 	Prod       bool           // влияет на флаг Secure у refresh-cookie
 	RefreshTTL time.Duration  // срок жизни refresh-cookie
 }
@@ -32,13 +33,14 @@ type server struct {
 	auth       *auth.Service
 	store      *store.Store
 	notifier   *notify.Engine
+	subSecret  string
 	prod       bool
 	refreshTTL time.Duration
 }
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, prod: d.Prod, refreshTTL: d.RefreshTTL}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, prod: d.Prod, refreshTTL: d.RefreshTTL}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -62,6 +64,11 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/pages/{page}/incidents", s.handlePublicIncidents)
 		r.Get("/pages/{page}/incidents/{id}", s.handlePublicIncidentDetail)
 		r.Get("/pages/{page}/maintenances", s.handlePublicMaintenances)
+
+		// Подписки (этап 3.5): публичные, без авторизации.
+		r.Post("/pages/{page}/subscribe", s.handleSubscribe)
+		r.Get("/subscribe/confirm", s.handleConfirmSubscribe)
+		r.Get("/unsubscribe", s.handleUnsubscribe)
 
 		// Управляющие эндпоинты — только по операторскому JWT (ApiToken — этап 5).
 		// {page} здесь трактуется как uuid.

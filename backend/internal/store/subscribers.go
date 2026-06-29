@@ -43,6 +43,62 @@ func (s *Store) SubscriberByID(ctx context.Context, id uuid.UUID) (domain.Subscr
 	return mapSubscriber(row), nil
 }
 
+// SubscriberByPageChannelAddress находит подписчика по уникальной тройке (для идемпотентной
+// повторной подписки). ErrNotFound если нет.
+func (s *Store) SubscriberByPageChannelAddress(
+	ctx context.Context, pageID uuid.UUID, channel domain.SubscriberChannel, address string,
+) (domain.Subscriber, error) {
+	row, err := s.q.GetSubscriberByPageChannelAddress(ctx, db.GetSubscriberByPageChannelAddressParams{
+		StatusPageID: pageID, Channel: string(channel), Address: address,
+	})
+	if err != nil {
+		return domain.Subscriber{}, wrapNotFound(err)
+	}
+	return mapSubscriber(row), nil
+}
+
+// SubscriberByConfirmTokenHash находит подписчика по хэшу confirm-токена. ErrNotFound если нет.
+func (s *Store) SubscriberByConfirmTokenHash(ctx context.Context, tokenHash string) (domain.Subscriber, error) {
+	row, err := s.q.GetSubscriberByConfirmToken(ctx, &tokenHash)
+	if err != nil {
+		return domain.Subscriber{}, wrapNotFound(err)
+	}
+	return mapSubscriber(row), nil
+}
+
+// ReissueConfirmToken обновляет confirm-токен и scope/компоненты неподтверждённой подписки
+// (повторная подписка тем же адресом — пользователь не получил/потерял письмо).
+func (s *Store) ReissueConfirmToken(
+	ctx context.Context, id uuid.UUID, tokenHash string, scope domain.SubscriberScope, componentIDs []uuid.UUID,
+) (domain.Subscriber, error) {
+	if componentIDs == nil {
+		componentIDs = []uuid.UUID{}
+	}
+	row, err := s.q.SetSubscriberConfirmToken(ctx, db.SetSubscriberConfirmTokenParams{
+		ID: id, ConfirmToken: &tokenHash, Scope: string(scope), ComponentIds: componentIDs,
+	})
+	if err != nil {
+		return domain.Subscriber{}, wrapNotFound(err)
+	}
+	return mapSubscriber(row), nil
+}
+
+// ConfirmSubscriber переводит подписку в confirmed=true и гасит confirm-токен (одноразовый).
+func (s *Store) ConfirmSubscriber(ctx context.Context, id uuid.UUID) error {
+	if err := s.q.ConfirmSubscriber(ctx, id); err != nil {
+		return fmt.Errorf("store: confirm subscriber: %w", err)
+	}
+	return nil
+}
+
+// DeleteSubscriber физически удаляет подписчика (отписка). Каскад убирает его уведомления.
+func (s *Store) DeleteSubscriber(ctx context.Context, id uuid.UUID) error {
+	if err := s.q.DeleteSubscriber(ctx, id); err != nil {
+		return fmt.Errorf("store: delete subscriber: %w", err)
+	}
+	return nil
+}
+
 // ListConfirmedSubscribers возвращает подтверждённых подписчиков страницы — кандидатов на рассылку.
 // Фильтрация по scope/компонентам — на стороне движка (domain.Subscriber.WantsEvent).
 func (s *Store) ListConfirmedSubscribers(ctx context.Context, pageID uuid.UUID) ([]domain.Subscriber, error) {

@@ -69,6 +69,29 @@ func (e *Engine) MaintenanceEvent(ctx context.Context, m domain.Maintenance, eve
 	return e.dispatch(ctx, m.StatusPageID, m.ComponentIDs, event, maintenancePayload(m))
 }
 
+// SendConfirmation публикует письмо double opt-in (subscriber_confirm) конкретному подписчику:
+// заводит запись журнала и кладёт Message с plaintext confirm-токеном в очередь его канала.
+// В отличие от dispatch — адресная отправка (без фан-аута), confirmToken в БД не хранится.
+func (e *Engine) SendConfirmation(ctx context.Context, sub domain.Subscriber, confirmToken string) error {
+	body, err := json.Marshal(ConfirmPayload{ConfirmToken: confirmToken})
+	if err != nil {
+		return fmt.Errorf("notify: marshal confirm payload: %w", err)
+	}
+	n, err := e.store.CreateNotification(ctx, sub.ID, domain.EventSubscriberConfirm, body)
+	if err != nil {
+		return fmt.Errorf("notify: create confirm notification: %w", err)
+	}
+	return e.publish(ctx, Message{
+		NotificationID: n.ID.String(),
+		SubscriberID:   sub.ID.String(),
+		Channel:        string(sub.Channel),
+		Event:          string(domain.EventSubscriberConfirm),
+		Address:        sub.Address,
+		Payload:        body,
+		StatusPageID:   sub.StatusPageID.String(),
+	})
+}
+
 // dispatch — общий фан-аут: разослать событие подходящим подтверждённым push-подписчикам.
 // На каждого: запись журнала (pending) + публикация Message с её id. Ошибки публикации не
 // прерывают рассылку (запись остаётся pending — восстановима); собираются и возвращаются.

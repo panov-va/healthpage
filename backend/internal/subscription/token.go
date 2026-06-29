@@ -10,13 +10,32 @@ package subscription
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 )
+
+// GenerateConfirmToken возвращает непрозрачный confirm-токен (уходит в письмо double opt-in) и
+// его SHA-256 хэш в hex (хранится в БД, §9). Сам токен в БД не хранится.
+func GenerateConfirmToken() (token, hash string, err error) {
+	raw := make([]byte, 32)
+	if _, err = rand.Read(raw); err != nil {
+		return "", "", fmt.Errorf("subscription: read random: %w", err)
+	}
+	token = base64.RawURLEncoding.EncodeToString(raw)
+	return token, HashConfirmToken(token), nil
+}
+
+// HashConfirmToken возвращает hex SHA-256 от confirm-токена (для поиска/сравнения в БД).
+func HashConfirmToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
 
 // UnsubscribeToken возвращает токен отписки вида "<subscriberID>.<base64url(HMAC)>".
 func UnsubscribeToken(secret string, subscriberID uuid.UUID) string {

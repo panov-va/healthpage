@@ -61,6 +61,7 @@ func main() {
 			Auth:       authSvc,
 			Store:      st,
 			Notifier:   notifier,
+			SubSecret:  cfg.SubscriptionSecret,
 			Prod:       cfg.IsProd(),
 			RefreshTTL: cfg.RefreshTTL,
 		}),

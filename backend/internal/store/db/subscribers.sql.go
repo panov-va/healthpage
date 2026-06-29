@@ -11,6 +11,16 @@ import (
 	"github.com/google/uuid"
 )
 
+const confirmSubscriber = `-- name: ConfirmSubscriber :exec
+UPDATE subscribers SET confirmed = true, confirm_token = NULL WHERE id = $1
+`
+
+// Подтверждение подписки: confirmed=true, confirm-токен гасится (одноразовый).
+func (q *Queries) ConfirmSubscriber(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, confirmSubscriber, id)
+	return err
+}
+
 const createSubscriber = `-- name: CreateSubscriber :one
 
 INSERT INTO subscribers (
@@ -60,12 +70,76 @@ func (q *Queries) CreateSubscriber(ctx context.Context, arg CreateSubscriberPara
 	return i, err
 }
 
+const deleteSubscriber = `-- name: DeleteSubscriber :exec
+DELETE FROM subscribers WHERE id = $1
+`
+
+// Отписка — физическое удаление строки (в модели §5 у Subscriber нет soft-delete).
+func (q *Queries) DeleteSubscriber(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteSubscriber, id)
+	return err
+}
+
+const getSubscriberByConfirmToken = `-- name: GetSubscriberByConfirmToken :one
+SELECT id, status_page_id, channel, address, confirmed, confirm_token, unsubscribe_token, scope, component_ids, created_at, updated_at FROM subscribers WHERE confirm_token = $1
+`
+
+// Поиск по хэшу confirm-токена (double opt-in подтверждение).
+func (q *Queries) GetSubscriberByConfirmToken(ctx context.Context, confirmToken *string) (Subscriber, error) {
+	row := q.db.QueryRow(ctx, getSubscriberByConfirmToken, confirmToken)
+	var i Subscriber
+	err := row.Scan(
+		&i.ID,
+		&i.StatusPageID,
+		&i.Channel,
+		&i.Address,
+		&i.Confirmed,
+		&i.ConfirmToken,
+		&i.UnsubscribeToken,
+		&i.Scope,
+		&i.ComponentIds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getSubscriberByID = `-- name: GetSubscriberByID :one
 SELECT id, status_page_id, channel, address, confirmed, confirm_token, unsubscribe_token, scope, component_ids, created_at, updated_at FROM subscribers WHERE id = $1
 `
 
 func (q *Queries) GetSubscriberByID(ctx context.Context, id uuid.UUID) (Subscriber, error) {
 	row := q.db.QueryRow(ctx, getSubscriberByID, id)
+	var i Subscriber
+	err := row.Scan(
+		&i.ID,
+		&i.StatusPageID,
+		&i.Channel,
+		&i.Address,
+		&i.Confirmed,
+		&i.ConfirmToken,
+		&i.UnsubscribeToken,
+		&i.Scope,
+		&i.ComponentIds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSubscriberByPageChannelAddress = `-- name: GetSubscriberByPageChannelAddress :one
+SELECT id, status_page_id, channel, address, confirmed, confirm_token, unsubscribe_token, scope, component_ids, created_at, updated_at FROM subscribers
+WHERE status_page_id = $1 AND channel = $2 AND address = $3
+`
+
+type GetSubscriberByPageChannelAddressParams struct {
+	StatusPageID uuid.UUID
+	Channel      string
+	Address      string
+}
+
+func (q *Queries) GetSubscriberByPageChannelAddress(ctx context.Context, arg GetSubscriberByPageChannelAddressParams) (Subscriber, error) {
+	row := q.db.QueryRow(ctx, getSubscriberByPageChannelAddress, arg.StatusPageID, arg.Channel, arg.Address)
 	var i Subscriber
 	err := row.Scan(
 		&i.ID,
@@ -121,4 +195,42 @@ func (q *Queries) ListConfirmedSubscribers(ctx context.Context, statusPageID uui
 		return nil, err
 	}
 	return items, nil
+}
+
+const setSubscriberConfirmToken = `-- name: SetSubscriberConfirmToken :one
+UPDATE subscribers SET confirm_token = $2, scope = $3, component_ids = $4
+WHERE id = $1
+RETURNING id, status_page_id, channel, address, confirmed, confirm_token, unsubscribe_token, scope, component_ids, created_at, updated_at
+`
+
+type SetSubscriberConfirmTokenParams struct {
+	ID           uuid.UUID
+	ConfirmToken *string
+	Scope        string
+	ComponentIds []uuid.UUID
+}
+
+// Перевыпуск confirm-токена и обновление scope при повторной (неподтверждённой) подписке.
+func (q *Queries) SetSubscriberConfirmToken(ctx context.Context, arg SetSubscriberConfirmTokenParams) (Subscriber, error) {
+	row := q.db.QueryRow(ctx, setSubscriberConfirmToken,
+		arg.ID,
+		arg.ConfirmToken,
+		arg.Scope,
+		arg.ComponentIds,
+	)
+	var i Subscriber
+	err := row.Scan(
+		&i.ID,
+		&i.StatusPageID,
+		&i.Channel,
+		&i.Address,
+		&i.Confirmed,
+		&i.ConfirmToken,
+		&i.UnsubscribeToken,
+		&i.Scope,
+		&i.ComponentIds,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

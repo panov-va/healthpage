@@ -13,17 +13,12 @@
 **Ветка:** основная теперь **master** (main переименована, запушена). Дефолт на GitHub
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этап 1 (Ядро домена) — **закрыт по коду**. Этап 0 закоммичен (+ возможно 1.1).
-**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1 (миграции), 3.2 (топология), 3.3 (движок),
-3.4 (worker-email) — готовы по коду, ждут коммита. Этапы 1–2 закоммичены человеком.
-**Следующий шаг:** Этап 3.5 — эндпоинты подписки: `POST /pages/{slug}/subscribe` (создать Subscriber
-confirmed=false + случайный confirm-токен[хэш в `confirm_token`] → опубликовать письмо
-`subscriber_confirm` в q.email через `notify`/`queue.Publisher` с plaintext-токеном в `ConfirmPayload`),
-`GET /subscribe/confirm?token=` (хэш→поиск→confirmed=true), `GET /unsubscribe?token=`
-(`subscription.ParseUnsubscribeToken` → удалить подписчика). Готовое: формат письма + рендер confirm/
-unsubscribe уже в worker-email; `subscription.UnsubscribeToken/ParseUnsubscribeToken`; store
-`CreateSubscriber`/`SubscriberByID`. Нужны новые store-методы: `SubscriberByConfirmTokenHash`,
-`ConfirmSubscriber`, `DeleteSubscriber`. **SUBSCRIPTION_SECRET в api и worker-email должны совпадать**
-(в dev оба → JWT_SECRET). Затем 3.6 (RSS/iCal), 3.7 (telegram), …
+**Фаза:** Этап 3 (Подписки и уведомления) — в работе. 3.1–3.5 готовы по коду, ждут коммита.
+Этапы 1–2 закоммичены человеком.
+**Следующий шаг:** Этап 3.6 — публичные фиды: RSS/Atom инцидентов и iCal плановых работ
+(`GET /pages/{slug}/feed.rss`/`.atom`/`.ics` — свериться с openapi на точные пути). Чистые сериализаторы
+поверх уже готовых store-методов (`ListPublicIncidents`/`ListPublicMaintenances`); без рассылки, без
+авторизации (публично). Затем 3.7 (telegram), 3.8 (max), 3.9 (slack), 3.10 (управление подписчиками).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -121,6 +116,33 @@ unsubscribe уже в worker-email; `subscription.UnsubscribeToken/ParseUnsubscr
   `queue_integration_test.go` (skip без `HEALTHPAGE_TEST_AMQP`): publisher confirm + маршрутизация →
   q.email; Nack(requeue=false) → dead-letter в q.dlq.email; delayed-публикация приходит через ~1s.
   **PASS.** go build/vet/gofmt/golangci-lint зелёные; backend и rabbitmq образы собираются.
+
+**Этап 3.5 — эндпоинты подписки (написано, проверено на PG16, ждёт коммита):**
+- **Контракт НЕ менялся** — `POST /pages/{slug}/subscribe`, `GET /subscribe/confirm`, `GET /unsubscribe`
+  уже были в openapi (security[]). Регенерация типов не нужна.
+- **sqlc** (subscribers.sql): GetSubscriberByPageChannelAddress, GetSubscriberByConfirmToken (по хэшу),
+  SetSubscriberConfirmToken (перевыпуск токена+scope), ConfirmSubscriber (confirmed=true, токен→NULL),
+  DeleteSubscriber (hard delete) → перегенерирован db. store-методы + `ReissueConfirmToken`/
+  `SubscriberByConfirmTokenHash`/`ConfirmSubscriber`/`DeleteSubscriber`/`SubscriberByPageChannelAddress`.
+- **subscription** (token.go): `GenerateConfirmToken`→(plaintext, hex-SHA256-хэш), `HashConfirmToken`
+  (поиск/сравнение). В БД — только хэш (§9), plaintext уходит в письмо.
+- **notify** (`Engine.SendConfirmation(sub, confirmToken)`): адресная (без фан-аута) публикация письма
+  `subscriber_confirm` — запись журнала + Message с `ConfirmPayload{confirm_token}` в очередь канала.
+- **API** (`subscribe.go`, публичные): `handleSubscribe` — **только channel=email** (telegram/MAX/Slack —
+  свои флоу 3.7–3.9, иначе 422); приватная страница → 404 (loadPublicPage); идемпотентность по
+  (page,channel,address): нет → create(pending+хэш)+письмо; есть и не подтверждён → ReissueConfirmToken+
+  письмо; есть и подтверждён → 202 без письма; scope=components валидирует принадлежность компонентов
+  (переиспользует parseMaintenanceComponents). `handleConfirmSubscribe` — хэш токена → поиск → confirmed
+  (одноразовый); невалидный/использованный → 400. `handleUnsubscribe` — ParseUnsubscribeToken(HMAC) →
+  DeleteSubscriber (идемпотентно); битый → 400. `Deps.SubSecret`=cfg.SubscriptionSecret в main.go.
+- **Флаги:** (1) **только email** на этом этапе (фокус 3.5 = email-подписка). (2) confirm/unsubscribe
+  отвечают JSON {status:...} 200 — это API-эндпоинты, кликаются из письма в браузере; «красивую»
+  HTML-страницу подтверждения/отписки (или редирект на public-ssr) можно добавить в этапе 4 (UX).
+  (3) Если notifier=nil (RabbitMQ off) — подписчик создаётся pending, письмо не уходит (лог), ответ 202.
+- **Проверено:** интеграционный `subscribe_integration_test` (PG16, fake-publisher ловит confirm-токен):
+  subscribe→202+письмо+pending → повтор→перевыпуск+новое письмо → старый токен 400 → confirm свежим→200+
+  confirmed → повтор confirm 400 → подтверждённый subscribe→202 без письма → unsubscribe(HMAC)→200+удалён →
+  битый токен 400, чужой slug 404, telegram 422. build/test/vet/gofmt/golangci-lint зелёные.
 
 **Этап 3.4 — worker-email (написано, проверено на живых PG16+RabbitMQ, ждёт коммита):**
 - **Контракт НЕ менялся.** Новый пакет `internal/email` + команда `cmd/worker-email` + пакет

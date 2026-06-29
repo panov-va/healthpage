@@ -239,7 +239,18 @@
       здесь готова доставка (вкл. рендер confirm/unsubscribe-ссылок). Юнит-тесты (token/render/worker с
       фейками) + живой e2e (engine→q.email→worker доставил+sent, повтор идемпотентен). build/test/vet/
       gofmt/golangci-lint зелёные. Ждёт коммита.
-- [ ] **3.5** Email-подписка: `POST /pages/{slug}/subscribe`, confirm, unsubscribe.
+- [x] **3.5** Email-подписка: `POST /pages/{slug}/subscribe`, confirm, unsubscribe.
+      — ✅ Контракт НЕ менялся (эндпоинты уже в openapi). sqlc: GetSubscriberByPageChannelAddress/
+      ByConfirmToken, SetSubscriberConfirmToken (перевыпуск), ConfirmSubscriber, DeleteSubscriber →
+      store-методы. `subscription`: GenerateConfirmToken/HashConfirmToken (случайный токен, хэш в БД §9).
+      `notify.Engine.SendConfirmation` (адресная публикация subscriber_confirm с plaintext-токеном).
+      API `subscribe.go` (публичные, security[]): POST subscribe (только email; идемпотентно —
+      создать/перевыпустить/не-трогать по (page,channel,address); приватная страница 404; не-email 422),
+      GET confirm (хэш→поиск→confirmed=true, токен одноразовый; невалидный 400), GET unsubscribe
+      (ParseUnsubscribeToken HMAC→DeleteSubscriber; битый 400). server.Deps.SubSecret. Интеграционный
+      тест на PG16 (subscribe→202+письмо→pending; повтор→перевыпуск; старый токен 400; confirm→200+
+      confirmed; повтор confirm 400; подтверждённый→202 без письма; unsubscribe→200+удалён; негативы).
+      build/test/vet/gofmt/golangci-lint зелёные. Ждёт коммита.
 - [ ] **3.6** RSS/Atom фид и iCal-фид (публичные эндпоинты).
 - [ ] **3.7** `worker-telegram`: бот, подписка на страницу/компоненты, доставка.
 - [ ] **3.8** `worker-max`: MAX Bot API, подписка, доставка; троттлинг ~30 rps.

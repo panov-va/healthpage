@@ -2,10 +2,16 @@
 
 -- name: CreateIncident :one
 INSERT INTO incidents (
-    status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible
+    status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible,
+    integration_id, external_dedup_key
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING *;
+
+-- name: GetOpenIncidentByDedup :one
+SELECT * FROM incidents
+WHERE status_page_id = $1 AND external_dedup_key = $2
+  AND resolved_at IS NULL AND deleted_at IS NULL;
 
 -- name: GetIncidentByID :one
 SELECT * FROM incidents WHERE id = $1 AND deleted_at IS NULL;

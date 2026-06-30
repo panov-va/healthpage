@@ -137,21 +137,24 @@ func (q *Queries) CountPublicIncidents(ctx context.Context, arg CountPublicIncid
 const createIncident = `-- name: CreateIncident :one
 
 INSERT INTO incidents (
-    status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible
+    status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible,
+    integration_id, external_dedup_key
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+RETURNING id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at, integration_id, external_dedup_key
 `
 
 type CreateIncidentParams struct {
-	StatusPageID  uuid.UUID
-	Title         string
-	CurrentStatus IncidentStatus
-	Impact        IncidentImpact
-	StartedAt     time.Time
-	ResolvedAt    *time.Time
-	Postmortem    *string
-	IsVisible     bool
+	StatusPageID     uuid.UUID
+	Title            string
+	CurrentStatus    IncidentStatus
+	Impact           IncidentImpact
+	StartedAt        time.Time
+	ResolvedAt       *time.Time
+	Postmortem       *string
+	IsVisible        bool
+	IntegrationID    *uuid.UUID
+	ExternalDedupKey *string
 }
 
 // ── incidents ──
@@ -165,6 +168,8 @@ func (q *Queries) CreateIncident(ctx context.Context, arg CreateIncidentParams) 
 		arg.ResolvedAt,
 		arg.Postmortem,
 		arg.IsVisible,
+		arg.IntegrationID,
+		arg.ExternalDedupKey,
 	)
 	var i Incident
 	err := row.Scan(
@@ -180,6 +185,8 @@ func (q *Queries) CreateIncident(ctx context.Context, arg CreateIncidentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.IntegrationID,
+		&i.ExternalDedupKey,
 	)
 	return i, err
 }
@@ -194,7 +201,7 @@ func (q *Queries) DeleteIncidentComponents(ctx context.Context, incidentID uuid.
 }
 
 const getIncidentByID = `-- name: GetIncidentByID :one
-SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at FROM incidents WHERE id = $1 AND deleted_at IS NULL
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at, integration_id, external_dedup_key FROM incidents WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetIncidentByID(ctx context.Context, id uuid.UUID) (Incident, error) {
@@ -213,6 +220,41 @@ func (q *Queries) GetIncidentByID(ctx context.Context, id uuid.UUID) (Incident, 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.IntegrationID,
+		&i.ExternalDedupKey,
+	)
+	return i, err
+}
+
+const getOpenIncidentByDedup = `-- name: GetOpenIncidentByDedup :one
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at, integration_id, external_dedup_key FROM incidents
+WHERE status_page_id = $1 AND external_dedup_key = $2
+  AND resolved_at IS NULL AND deleted_at IS NULL
+`
+
+type GetOpenIncidentByDedupParams struct {
+	StatusPageID     uuid.UUID
+	ExternalDedupKey *string
+}
+
+func (q *Queries) GetOpenIncidentByDedup(ctx context.Context, arg GetOpenIncidentByDedupParams) (Incident, error) {
+	row := q.db.QueryRow(ctx, getOpenIncidentByDedup, arg.StatusPageID, arg.ExternalDedupKey)
+	var i Incident
+	err := row.Scan(
+		&i.ID,
+		&i.StatusPageID,
+		&i.Title,
+		&i.CurrentStatus,
+		&i.Impact,
+		&i.StartedAt,
+		&i.ResolvedAt,
+		&i.Postmortem,
+		&i.IsVisible,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.IntegrationID,
+		&i.ExternalDedupKey,
 	)
 	return i, err
 }
@@ -254,7 +296,7 @@ func (q *Queries) ListActiveIncidentComponentStatuses(ctx context.Context, statu
 }
 
 const listActivePublicIncidents = `-- name: ListActivePublicIncidents :many
-SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at FROM incidents
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at, integration_id, external_dedup_key FROM incidents
 WHERE status_page_id = $1
   AND deleted_at IS NULL
   AND is_visible = true
@@ -285,6 +327,8 @@ func (q *Queries) ListActivePublicIncidents(ctx context.Context, statusPageID uu
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.IntegrationID,
+			&i.ExternalDedupKey,
 		); err != nil {
 			return nil, err
 		}
@@ -360,7 +404,7 @@ func (q *Queries) ListIncidentUpdates(ctx context.Context, incidentID uuid.UUID)
 }
 
 const listIncidents = `-- name: ListIncidents :many
-SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at FROM incidents
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at, integration_id, external_dedup_key FROM incidents
 WHERE status_page_id = $1
   AND deleted_at IS NULL
   AND ($2::incident_status IS NULL OR current_status = $2)
@@ -411,6 +455,8 @@ func (q *Queries) ListIncidents(ctx context.Context, arg ListIncidentsParams) ([
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.IntegrationID,
+			&i.ExternalDedupKey,
 		); err != nil {
 			return nil, err
 		}
@@ -423,7 +469,7 @@ func (q *Queries) ListIncidents(ctx context.Context, arg ListIncidentsParams) ([
 }
 
 const listPublicIncidents = `-- name: ListPublicIncidents :many
-SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at FROM incidents
+SELECT id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at, integration_id, external_dedup_key FROM incidents
 WHERE status_page_id = $1
   AND deleted_at IS NULL
   AND is_visible = true
@@ -475,6 +521,8 @@ func (q *Queries) ListPublicIncidents(ctx context.Context, arg ListPublicInciden
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.IntegrationID,
+			&i.ExternalDedupKey,
 		); err != nil {
 			return nil, err
 		}
@@ -504,7 +552,7 @@ UPDATE incidents SET
     postmortem = $6,
     is_visible = $7
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at
+RETURNING id, status_page_id, title, current_status, impact, started_at, resolved_at, postmortem, is_visible, created_at, updated_at, deleted_at, integration_id, external_dedup_key
 `
 
 type UpdateIncidentParams struct {
@@ -541,6 +589,8 @@ func (q *Queries) UpdateIncident(ctx context.Context, arg UpdateIncidentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.IntegrationID,
+		&i.ExternalDedupKey,
 	)
 	return i, err
 }

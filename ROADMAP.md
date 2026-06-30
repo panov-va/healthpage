@@ -456,8 +456,30 @@ white-label убирает брендинг; виджет встраиваетс
       open→update→resolve→delete**, работы create→in_progress→delete, подписчики create→list→delete,
       шаблоны create→list; чужой status_page_id под токеном→404; оператор без status_page_id→422.
       **PASS.** build/test/vet/gofmt/golangci-lint + admin build зелёные. Ждёт коммита.
-- [ ] **5.3** Входящие webhook'и: Grafana, Prometheus, PagerDuty, generic; маппинг на компоненты;
+- [x] **5.3** Входящие webhook'и: Grafana, Prometheus, PagerDuty, generic; маппинг на компоненты;
       HMAC-подпись; идемпотентность по dedup-ключу. (Форматы payload — позже, см. DESIGN.)
+      — ✅ **Объём по решению человека: только grafana + prometheus** (generic/pagerduty отложены —
+      роуты возвращают 501). **Контракт расширен с санкции человека:** добавлены CRUD
+      `/webhook-integrations` (GET list?status_page_id / POST / GET / PATCH / DELETE) + схемы
+      `WebhookIntegration`/`Create`/`Patch`/`Created` + enum `WebhookIntegrationSource`; у 4 Create-схем
+      status_page_id из required убран ранее (5.2) — у WebhookIntegrationCreate тоже опционален при
+      ApiToken; secret генерится сервером, показывается единожды (POST + PATCH regenerate_secret);
+      generic/pagerduty inbound +501. Типы перегенерированы. Миграция `00012_webhook_integrations.sql`
+      (БД→12): таблица `webhook_integrations` (source CHECK, secret **plaintext** — нужен для HMAC,
+      не §9-токен; component_mapping jsonb) + в `incidents` добавлены `integration_id` (FK SET NULL) и
+      `external_dedup_key` + **partial-unique** (status_page_id, external_dedup_key) WHERE открыт →
+      один открытый инцидент на dedup-ключ. Домен `webhook_integration.go` (WebhookSource +Implemented).
+      Пакет `internal/webhook` (чистый): `VerifySignature` (HMAC-SHA256 X-Signature, sha256=-префикс,
+      constant-time), `ParseGrafana`/`ParsePrometheus` (Alertmanager-совместимый payload → []Alert;
+      dedup=fingerprint|хэш меток), `Mapping` (match_label→map / default_component_ids + default_impact).
+      store: webhook_integrations CRUD + `OpenIncidentByDedup` + CreateIncident расширен (dedup/integration,
+      ErrDedupConflict на гонке). API `integrations.go` (inbound, HMAC не JWT): firing→создать инцидент
+      (если открытого с ключом нет; маппинг на компоненты страницы, impact→статус компонента),
+      resolved→закрыть; повторные доставки идемпотентны. `webhook_integrations.go` (CRUD, operator-only).
+      Юнит (webhook: подпись/парсинг/маппинг) + интеграционный на PG16 (CRUD+секрет единожды; firing→
+      инцидент→идемпотентный повтор→resolved→закрытие→рецидив; битая подпись/чужой источник/неизвестная
+      интеграция→401; generic→501; prometheus; ротация секрета; изоляция операторов). **PASS.**
+      build/test/vet/gofmt/golangci-lint + admin build зелёные; миграция up/down/up обратима. Ждёт коммита.
 - [ ] **5.4** Исходящие webhook'и: Mattermost / произвольный URL (`worker-webhook`).
       (Slack как подписка уже сделан в этапе 3.)
 

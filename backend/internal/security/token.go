@@ -112,3 +112,14 @@ func HashAPIToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
+
+// GenerateWebhookSecret возвращает секрет webhook-интеграции (этап 5.3). В отличие от токенов,
+// секрет хранится в открытом виде (нужен для проверки HMAC), поэтому хэш не возвращается.
+// Префикс whsec_ — для распознавания.
+func GenerateWebhookSecret() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("security: read webhook secret: %w", err)
+	}
+	return "whsec_" + base64.RawURLEncoding.EncodeToString(raw), nil
+}

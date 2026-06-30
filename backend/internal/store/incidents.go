@@ -28,16 +28,22 @@ func (s *Store) CreateIncident(
 	q := s.q.WithTx(tx)
 
 	created, err := q.CreateIncident(ctx, db.CreateIncidentParams{
-		StatusPageID:  inc.StatusPageID,
-		Title:         inc.Title,
-		CurrentStatus: db.IncidentStatus(inc.CurrentStatus),
-		Impact:        db.IncidentImpact(inc.Impact),
-		StartedAt:     inc.StartedAt,
-		ResolvedAt:    inc.ResolvedAt,
-		Postmortem:    inc.Postmortem,
-		IsVisible:     inc.IsVisible,
+		StatusPageID:     inc.StatusPageID,
+		Title:            inc.Title,
+		CurrentStatus:    db.IncidentStatus(inc.CurrentStatus),
+		Impact:           db.IncidentImpact(inc.Impact),
+		StartedAt:        inc.StartedAt,
+		ResolvedAt:       inc.ResolvedAt,
+		Postmortem:       inc.Postmortem,
+		IsVisible:        inc.IsVisible,
+		IntegrationID:    inc.IntegrationID,
+		ExternalDedupKey: inc.ExternalDedupKey,
 	})
 	if err != nil {
+		// Гонка двух firing-webhook'ов с одним dedup-ключом: partial-unique индекс отбивает второй.
+		if isUniqueViolation(err) {
+			return domain.Incident{}, ErrDedupConflict
+		}
 		return domain.Incident{}, fmt.Errorf("store: create incident: %w", err)
 	}
 
@@ -68,6 +74,19 @@ func (s *Store) CreateIncident(
 		return domain.Incident{}, fmt.Errorf("store: commit: %w", err)
 	}
 	return s.IncidentByID(ctx, created.ID)
+}
+
+// OpenIncidentByDedup возвращает открытый (не resolved, не удалённый) инцидент с данным
+// dedup-ключом на странице. ErrNotFound если такого нет.
+func (s *Store) OpenIncidentByDedup(ctx context.Context, pageID uuid.UUID, dedupKey string) (domain.Incident, error) {
+	row, err := s.q.GetOpenIncidentByDedup(ctx, db.GetOpenIncidentByDedupParams{
+		StatusPageID:     pageID,
+		ExternalDedupKey: &dedupKey,
+	})
+	if err != nil {
+		return domain.Incident{}, wrapNotFound(err)
+	}
+	return s.IncidentByID(ctx, row.ID)
 }
 
 // IncidentByID загружает агрегат инцидента (строка + компоненты + лента обновлений).
@@ -459,18 +478,20 @@ func mapKeys(m map[uuid.UUID]struct{}) []uuid.UUID {
 
 func mapIncident(i db.Incident) domain.Incident {
 	return domain.Incident{
-		ID:            i.ID,
-		StatusPageID:  i.StatusPageID,
-		Title:         i.Title,
-		CurrentStatus: domain.IncidentStatus(i.CurrentStatus),
-		Impact:        domain.IncidentImpact(i.Impact),
-		StartedAt:     i.StartedAt,
-		ResolvedAt:    i.ResolvedAt,
-		Postmortem:    i.Postmortem,
-		IsVisible:     i.IsVisible,
-		CreatedAt:     i.CreatedAt,
-		UpdatedAt:     i.UpdatedAt,
-		DeletedAt:     i.DeletedAt,
+		ID:               i.ID,
+		StatusPageID:     i.StatusPageID,
+		Title:            i.Title,
+		CurrentStatus:    domain.IncidentStatus(i.CurrentStatus),
+		Impact:           domain.IncidentImpact(i.Impact),
+		StartedAt:        i.StartedAt,
+		ResolvedAt:       i.ResolvedAt,
+		Postmortem:       i.Postmortem,
+		IsVisible:        i.IsVisible,
+		CreatedAt:        i.CreatedAt,
+		UpdatedAt:        i.UpdatedAt,
+		DeletedAt:        i.DeletedAt,
+		IntegrationID:    i.IntegrationID,
+		ExternalDedupKey: i.ExternalDedupKey,
 	}
 }
 

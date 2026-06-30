@@ -172,6 +172,14 @@ const (
 	Write TokenScope = "write"
 )
 
+// Defines values for WebhookIntegrationSource.
+const (
+	Generic    WebhookIntegrationSource = "generic"
+	Grafana    WebhookIntegrationSource = "grafana"
+	Pagerduty  WebhookIntegrationSource = "pagerduty"
+	Prometheus WebhookIntegrationSource = "prometheus"
+)
+
 // Defines values for GetPagesSlugBadgeSvgParamsLang.
 const (
 	En GetPagesSlugBadgeSvgParamsLang = "en"
@@ -775,6 +783,49 @@ type UptimeReport struct {
 	UptimePercent float32 `json:"uptime_percent"`
 }
 
+// WebhookIntegration defines model for WebhookIntegration.
+type WebhookIntegration struct {
+	ComponentMapping map[string]interface{}   `json:"component_mapping"`
+	CreatedAt        time.Time                `json:"created_at"`
+	Id               openapi_types.UUID       `json:"id"`
+	Name             string                   `json:"name"`
+	Source           WebhookIntegrationSource `json:"source"`
+	StatusPageId     openapi_types.UUID       `json:"status_page_id"`
+	UpdatedAt        *time.Time               `json:"updated_at,omitempty"`
+}
+
+// WebhookIntegrationCreate defines model for WebhookIntegrationCreate.
+type WebhookIntegrationCreate struct {
+	ComponentMapping *map[string]interface{}  `json:"component_mapping,omitempty"`
+	Name             string                   `json:"name"`
+	Source           WebhookIntegrationSource `json:"source"`
+	StatusPageId     openapi_types.UUID       `json:"status_page_id"`
+}
+
+// WebhookIntegrationCreated defines model for WebhookIntegrationCreated.
+type WebhookIntegrationCreated struct {
+	ComponentMapping map[string]interface{} `json:"component_mapping"`
+	CreatedAt        time.Time              `json:"created_at"`
+	Id               openapi_types.UUID     `json:"id"`
+	Name             string                 `json:"name"`
+
+	// Secret HMAC-секрет; показывается единожды при создании/ротации
+	Secret       *string                  `json:"secret,omitempty"`
+	Source       WebhookIntegrationSource `json:"source"`
+	StatusPageId openapi_types.UUID       `json:"status_page_id"`
+	UpdatedAt    *time.Time               `json:"updated_at,omitempty"`
+}
+
+// WebhookIntegrationPatch defines model for WebhookIntegrationPatch.
+type WebhookIntegrationPatch struct {
+	ComponentMapping *map[string]interface{} `json:"component_mapping,omitempty"`
+	Name             *string                 `json:"name,omitempty"`
+	RegenerateSecret *bool                   `json:"regenerate_secret,omitempty"`
+}
+
+// WebhookIntegrationSource defines model for WebhookIntegrationSource.
+type WebhookIntegrationSource string
+
 // IdPath defines model for IdPath.
 type IdPath = openapi_types.UUID
 
@@ -971,6 +1022,12 @@ type GetUnsubscribeParams struct {
 	Token string `form:"token" json:"token"`
 }
 
+// GetWebhookIntegrationsParams defines parameters for GetWebhookIntegrations.
+type GetWebhookIntegrationsParams struct {
+	// StatusPageId Страница, чьи интеграции вернуть.
+	StatusPageId openapi_types.UUID `form:"status_page_id" json:"status_page_id"`
+}
+
 // PostAuthLoginJSONRequestBody defines body for PostAuthLogin for application/json ContentType.
 type PostAuthLoginJSONRequestBody = LoginRequest
 
@@ -1063,3 +1120,9 @@ type PostSubscribersJSONRequestBody = SubscriberCreate
 
 // PostTokensJSONRequestBody defines body for PostTokens for application/json ContentType.
 type PostTokensJSONRequestBody = TokenCreate
+
+// PostWebhookIntegrationsJSONRequestBody defines body for PostWebhookIntegrations for application/json ContentType.
+type PostWebhookIntegrationsJSONRequestBody = WebhookIntegrationCreate
+
+// PatchWebhookIntegrationsIdJSONRequestBody defines body for PatchWebhookIntegrationsId for application/json ContentType.
+type PatchWebhookIntegrationsIdJSONRequestBody = WebhookIntegrationPatch

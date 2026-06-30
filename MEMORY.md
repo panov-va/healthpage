@@ -18,12 +18,14 @@
 ниже в «Что в работе»). 4.1 тема/тёмный режим/логотип/favicon/таймзона; 4.2 приватные по паролю +
 noindex; 4.2.1 приватные по списку email + magic-link; 4.3.1 управление доменом + CNAME; 4.3.2
 ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 4.4 white-label; 4.5 custom SMTP;
-4.6 виджет-бейдж. **Этап 5 (API и интеграции) В РАБОТЕ: 5.1 + 5.2 ГОТОВЫ ПО КОДУ** (ApiToken со
-scope'ами + аутентификация; полный write-API под page-токеном; ждут коммита; детали в «Что в работе»).
-5.2 сделал status_page_id опциональным при ApiToken (берётся из токена) для всех list/create эндпоинтов.
-**Следующий шаг:** 5.3 — входящие webhook'и (Grafana/Prometheus/PagerDuty/generic + `WebhookIntegration` +
-HMAC + идемпотентность по dedup-ключу), затем 5.4 — исходящие webhook'и (Mattermost/произвольный URL;
-worker-webhook уже потребляет q.slack — добавить q.webhook.out).
+4.6 виджет-бейдж. **Этап 5 (API и интеграции) В РАБОТЕ: 5.1 + 5.2 + 5.3 ГОТОВЫ ПО КОДУ** (ApiToken +
+аутентификация; полный write-API под page-токеном; входящие webhook'и grafana/prometheus; ждут
+коммита; детали в «Что в работе»). 5.2 сделал status_page_id опциональным при ApiToken (берётся из
+токена). 5.3 — только grafana+prometheus (generic/pagerduty отложены, 501); CRUD `/webhook-integrations`
++ HMAC (X-Signature) + идемпотентность по dedup-ключу (один открытый инцидент на ключ).
+**Следующий шаг:** 5.4 — исходящие webhook'и (Mattermost/произвольный URL; worker-webhook уже
+потребляет q.slack — добавить потребление q.webhook.out + публикацию исходящих событий). После 5.4
+Этап 5 закрыт (с учётом отложенных generic/pagerduty).
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** реальный выпуск TLS (4.3.2) и HTTPS-доступ по
 домену (4.3.3) **локально не проверены** — нужен прод-деплой (публичный DNS, открытые :80/:443,
 выпуск Let's Encrypt). edge/tls-manager в compose под профилем `edge` (не стартуют в dev).
@@ -105,6 +107,67 @@ worker-webhook уже потребляет q.slack — добавить q.webhoo
 ---
 
 ## Что в работе
+
+**Этап 5.3 — входящие webhook'и grafana/prometheus (написано, build+test(вкл. PG16)+lint+admin build зелёные, ждёт коммита):**
+- **Решения человека:** (1) объём — **только grafana + prometheus** (generic/pagerduty отложены →
+  роуты возвращают 501); (2) CRUD `/webhook-integrations` — **добавить** (secret генерится сервером,
+  единожды); (3) идемпотентность — **колонки в incidents** (external_dedup_key + integration_id,
+  partial-unique по открытому); (4) маппинг — **простой key→component_id + default**.
+- **Контракт расширен:** enum `WebhookIntegrationSource` [grafana,prometheus,pagerduty,generic];
+  схемы `WebhookIntegration` (без секрета) / `WebhookIntegrationCreate` (status_page_id опционален при
+  ApiToken) / `WebhookIntegrationPatch` (name/component_mapping/regenerate_secret) / `Created` (с secret);
+  пути `/webhook-integrations` (GET list?status_page_id / POST) и `/webhook-integrations/{id}`
+  (GET/PATCH/DELETE); inbound generic/pagerduty +501. Типы перегенерированы (TS+Go), openapi провалиден.
+- **Миграция** `00012_webhook_integrations.sql` (БД→**12**): `webhook_integrations` (status_page_id FK
+  CASCADE, source TEXT+CHECK, name, **secret plaintext**, component_mapping jsonb DEFAULT '{}', триггер
+  updated_at). `incidents` +`integration_id` (FK SET NULL) +`external_dedup_key`; **partial-unique**
+  `incidents_open_dedup_key (status_page_id, external_dedup_key) WHERE key NOT NULL AND resolved_at IS
+  NULL AND deleted_at IS NULL` → один открытый инцидент на dedup-ключ. up/down/up обратима на PG16.
+  **Флаг:** secret хранится В ОТКРЫТОМ ВИДЕ (НЕ хэш §9) — нужен для проверки HMAC; как пароль SMTP в
+  smtp_config или webhook URL slack-подписчика. API не возвращает его в list/get (только create/rotate).
+- **Домен** `webhook_integration.go`: `WebhookSource` (+IsValid/All/Implemented — grafana|prometheus),
+  `WebhookIntegration` (Secret в домене, в API DTO опускается). `Incident` +`IntegrationID`/
+  `ExternalDedupKey` (*; nil для ручных).
+- **Пакет `internal/webhook`** (чистый, как feed/widget): `signature.go` (`VerifySignature` HMAC-SHA256
+  X-Signature, поддержка `sha256=`-префикса, constant-time; `Sign` для тестов), `alert.go`
+  (`Alert{DedupKey,Firing,Title,Body,Labels}`; `ParseGrafana`=`ParsePrometheus`=Alertmanager-совместимый
+  парс; dedup=fingerprint, иначе sha256 по сортированным меткам; title=summary|alertname; body=
+  description|message|summary), `mapping.go` (`Mapping{Map,DefaultComponentIDs,MatchLabel,DefaultImpact}`,
+  `ParseMapping`, `Impact()` деф. major, `Resolve(alert)` — метка match_label→Map, иначе default).
+- **store:** `webhook_integrations.go` (Create/ByID/ListByPage/Update/Delete + mapWebhookIntegration;
+  mappingBytes нормализует nil→'{}'). `incidents.go`: `OpenIncidentByDedup` (открытый по ключу),
+  CreateIncident расширен (integration_id/external_dedup_key; **isUniqueViolation→ErrDedupConflict**
+  на гонке firing). `ErrDedupConflict` в store.go. sqlc: webhook_integrations.sql + CreateIncident(+2
+  колонки) + GetOpenIncidentByDedup → регенерация db.
+- **API:** `integrations.go` (inbound, **HMAC а не JWT**, в публичной группе роутов): `handleGrafanaWebhook`/
+  `handlePrometheusWebhook` → `handleInboundWebhook(source, parser)`: загрузить интеграцию по id
+  (любая проблема аутентификации→401, не раскрываем существование), сверить source с роутом,
+  прочитать тело (MaxBytesReader 1MiB), VerifySignature, распарсить, для каждого алерта `ingestAlert`:
+  firing+нет открытого→`createWebhookIncident` (impact из маппинга, статус компонента по impact:
+  critical→major_outage/major→partial/иначе degraded; компоненты фильтруются по принадлежности
+  странице; status=investigating; emit IncidentCreated), firing+есть открытый→no-op, resolved+есть→
+  AddIncidentUpdate(resolved)+emit IncidentUpdated, resolved+нет→no-op; ErrDedupConflict (гонка)→no-op;
+  → 202. generic/pagerduty→501. `webhook_integrations.go` (management, **operator-only** как токены —
+  минтит секрет): create (resolveManagedPage, валидация source/mapping, GenerateWebhookSecret),
+  list (без секрета), get/patch (name/mapping/regenerate_secret→новый секрет единожды)/delete;
+  `loadAuthorizedIntegration`. security `GenerateWebhookSecret` (префикс whsec_, plaintext, без хэша).
+- **Флаги/решения:** (1) управление интеграциями — operator-only (как токены). (2) component_mapping
+  валидируется только на парсимость (ParseMapping); принадлежность компонентов странице проверяется
+  при ingest (фильтр по pageComponentSet) — чужие/удалённые id молча отбрасываются. (3) dedup-ключ
+  пустой → алерт игнорируется (идемпотентность невозможна). (4) рецидив после resolve (тот же ключ)
+  создаёт новый инцидент — корректно (partial-unique только по открытым). (5) inbound не уведомляет по
+  скрытым? — webhook-инцидент всегда is_visible=true (видимый). (6) маршруты inbound в **публичной**
+  группе (security override), не под requireAuth.
+- **Проверено:** юнит `internal/webhook` (подпись happy/префикс/неверная/чужой секрет/пустые; парсинг
+  grafana+prometheus, fallback title, dedup по меткам стабилен; маппинг по метке/default/пустой;
+  ParseMapping). Интеграционный `integrations_integration_test` на PG16: создать grafana-интеграцию
+  (секрет единожды) → список без секрета → firing webhook (HMAC) → инцидент (impact major, title из
+  summary, компонент partial_outage) → повторный firing идемпотентен (1 инцидент) → resolved → инцидент
+  закрыт (resolved_at) → повторный resolved no-op → рецидив firing → новый инцидент (всего 2) → битая
+  подпись/чужой источник/неизвестная интеграция → 401 → generic → 501 → prometheus-интеграция firing →
+  инцидент → get/patch(ротация секрета→новый; без ротации→без секрета)/delete→204→get 404 → изоляция
+  оператора B (404). **PASS.** Полный go test + vet/gofmt/golangci-lint + admin build зелёные.
+  (Хелпер теста `signedWebhook` подписывает X-Signature.)
 
 **Этап 5.2 — полный write-API под page-токеном (написано, build+test(вкл. PG16)+lint+admin build зелёные, ждёт коммита):**
 - **Решение человека:** убрать `status_page_id` из `required` в `IncidentCreate`/`MaintenanceCreate`/
@@ -1283,3 +1346,10 @@ _Этап 0 — завершён и закоммичен._
   из required в 4 Create-схемах (санкция человека); типы перегенерированы. Интеграционный на PG16
   (полный lifecycle инцидента + CRUD всех ресурсов под токеном без status_page_id) PASS; build/test/
   vet/lint + admin build зелёные. Дальше — 5.3 (входящие webhook'и + WebhookIntegration + HMAC).
+- 2026-06-30 — Этап 5.3 (входящие webhook'и): только grafana+prometheus (generic/pagerduty → 501,
+  по решению человека). Миграция 00012 (webhook_integrations + dedup-колонки в incidents,
+  partial-unique по открытому); пакет internal/webhook (HMAC-подпись, парсинг Alertmanager-payload,
+  маппинг на компоненты); CRUD /webhook-integrations (operator-only, секрет единожды); inbound
+  handlers с HMAC + идемпотентным create/close инцидента по dedup-ключу. Контракт расширен (санкция
+  человека), типы перегенерированы. Юнит + интеграционный на PG16 PASS; build/test/vet/lint + admin
+  build зелёные; миграция обратима. Дальше — 5.4 (исходящие webhook'и, q.webhook.out).

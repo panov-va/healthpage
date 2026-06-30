@@ -142,6 +142,11 @@ type Incident struct {
 	UpdatedAt     time.Time
 	DeletedAt     *time.Time
 
+	// Авто-созданные инциденты от входящих webhook-интеграций (этап 5.3): источник и dedup-ключ
+	// для идемпотентности (один открытый инцидент на ключ). nil для ручных инцидентов.
+	IntegrationID    *uuid.UUID
+	ExternalDedupKey *string
+
 	// Связи (заполняются store при чтении агрегата; в самой строке incidents их нет).
 	Components []IncidentComponent
 	Updates    []IncidentUpdate

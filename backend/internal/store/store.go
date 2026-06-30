@@ -21,6 +21,8 @@ import (
 var (
 	ErrNotFound   = errors.New("store: not found")
 	ErrEmailTaken = errors.New("store: email already taken")
+	// ErrDedupConflict — открытый инцидент с таким dedup-ключом уже есть (этап 5.3, идемпотентность).
+	ErrDedupConflict = errors.New("store: open incident with this dedup key already exists")
 )
 
 // Store держит пул соединений и sqlc-запросы.

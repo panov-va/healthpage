@@ -1062,6 +1062,90 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ──────────────────── WEBHOOK INTEGRATIONS (управление) ─────────────────
+  /webhook-integrations:
+    get:
+      tags: [Integrations]
+      summary: Список webhook-интеграций страницы
+      description: Без секретов. Только операторский JWT.
+      parameters:
+        - name: status_page_id
+          in: query
+          required: true
+          description: Страница, чьи интеграции вернуть.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WebhookIntegration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Integrations]
+      summary: Создать webhook-интеграцию
+      description: Секрет генерится сервером и возвращается ЕДИНОЖДЫ.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookIntegrationCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookIntegrationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /webhook-integrations/{id}:
+    get:
+      tags: [Integrations]
+      summary: Получить webhook-интеграцию
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookIntegration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Integrations]
+      summary: Изменить интеграцию (name/component_mapping) или перевыпустить секрет
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookIntegrationPatch' }
+      responses:
+        '200':
+          description: >
+            OK. Поле secret присутствует только если был запрошен regenerate_secret.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookIntegrationCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Integrations]
+      summary: Удалить интеграцию
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ──────────────────────── PUBLIC SUBSCRIBE FLOW ────────────────────────
   /pages/{slug}/subscribe:
     post:
@@ -1187,6 +1271,7 @@ paths:
     post:
       tags: [Integrations]
       summary: Входящий webhook PagerDuty
+      description: "На MVP отложен — возвращает 501 (этап 5.3 реализует grafana/prometheus)."
       security:
         - IntegrationHmac: []
       parameters:
@@ -1199,11 +1284,13 @@ paths:
       responses:
         '202': { description: Принято }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { description: Не реализовано (источник отложен) }
 
   /integrations/{integration_id}/generic:
     post:
       tags: [Integrations]
       summary: Входящий generic webhook
+      description: "На MVP отложен — возвращает 501 (этап 5.3 реализует grafana/prometheus)."
       security:
         - IntegrationHmac: []
       parameters:
@@ -1216,6 +1303,7 @@ paths:
       responses:
         '202': { description: Принято }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { description: Не реализовано (источник отложен) }
 
   # ─────────────────────────────── BILLING ───────────────────────────────
   /billing/subscription:
@@ -1996,6 +2084,61 @@ components:
           items: { $ref: '#/components/schemas/TokenScope' }
         last_used_at: { type: [string, "null"], format: date-time }
         created_at: { type: string, format: date-time }
+
+    # ── webhook-интеграции (этап 5.3) ──
+    # source — источник входящего webhook'а. На MVP реализованы grafana и prometheus;
+    # generic и pagerduty объявлены, но возвращают 501 (отложены).
+    WebhookIntegrationSource:
+      type: string
+      enum: [grafana, prometheus, pagerduty, generic]
+
+    # component_mapping — настройка маппинга алерта на компоненты:
+    #   { "map": {"<ключ>": "<component_id>"}, "default_component_ids": ["<uuid>"],
+    #     "match_label": "<имя метки>", "default_impact": "major" }
+    # Ключ берётся из метки match_label алерта; нет совпадения → default_component_ids.
+    WebhookIntegration:
+      type: object
+      required: [id, status_page_id, source, name, component_mapping, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status_page_id: { type: string, format: uuid }
+        source: { $ref: '#/components/schemas/WebhookIntegrationSource' }
+        name: { type: string }
+        component_mapping: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    WebhookIntegrationCreate:
+      type: object
+      required: [status_page_id, source, name]
+      properties:
+        # Обязателен при операторском JWT; при ApiToken выводится из токена и должен совпадать, если передан.
+        status_page_id: { type: string, format: uuid }
+        source: { $ref: '#/components/schemas/WebhookIntegrationSource' }
+        name: { type: string }
+        component_mapping: { type: object, additionalProperties: true }
+
+    WebhookIntegrationPatch:
+      type: object
+      properties:
+        name: { type: string }
+        component_mapping: { type: object, additionalProperties: true }
+        # true → перевыпустить секрет; новый секрет вернётся в ответе единожды.
+        regenerate_secret: { type: boolean }
+
+    # Ответ создания/ротации: содержит secret (показывается ЕДИНОЖДЫ).
+    WebhookIntegrationCreated:
+      type: object
+      required: [id, status_page_id, source, name, component_mapping, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status_page_id: { type: string, format: uuid }
+        source: { $ref: '#/components/schemas/WebhookIntegrationSource' }
+        name: { type: string }
+        component_mapping: { type: object, additionalProperties: true }
+        secret: { type: string, description: "HMAC-секрет; показывается единожды при создании/ротации" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     # ── публичная сводка ──
     # Публично-безопасное подмножество StatusPage для рендера публичной страницы

@@ -99,6 +99,13 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/pages/{page}/rss", s.handleRSS)
 		r.Get("/pages/{page}/calendar.ics", s.handleICal)
 
+		// Входящие webhook'и интеграций (этап 5.3): аутентификация по HMAC-подписи (X-Signature),
+		// не по JWT/ApiToken. generic/pagerduty отложены (501).
+		r.Post("/integrations/{integration_id}/grafana", s.handleGrafanaWebhook)
+		r.Post("/integrations/{integration_id}/prometheus", s.handlePrometheusWebhook)
+		r.Post("/integrations/{integration_id}/generic", s.handleGenericWebhook)
+		r.Post("/integrations/{integration_id}/pagerduty", s.handlePagerDutyWebhook)
+
 		// Управляющие эндпоинты — только по операторскому JWT (ApiToken — этап 5).
 		// {page} здесь трактуется как uuid.
 		r.Group(func(r chi.Router) {
@@ -152,6 +159,13 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/tokens", s.handleListTokens)
 			r.Post("/tokens", s.handleCreateToken)
 			r.Delete("/tokens/{id}", s.handleDeleteToken)
+
+			// Webhook-интеграции (этап 5.3). Управление — только оператор (минтит секрет).
+			r.Get("/webhook-integrations", s.handleListWebhookIntegrations)
+			r.Post("/webhook-integrations", s.handleCreateWebhookIntegration)
+			r.Get("/webhook-integrations/{id}", s.handleGetWebhookIntegration)
+			r.Patch("/webhook-integrations/{id}", s.handlePatchWebhookIntegration)
+			r.Delete("/webhook-integrations/{id}", s.handleDeleteWebhookIntegration)
 		})
 	})
 

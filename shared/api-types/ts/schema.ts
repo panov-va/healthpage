@@ -2138,6 +2138,170 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhook-integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Список webhook-интеграций страницы
+         * @description Без секретов. Только операторский JWT.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Страница, чьи интеграции вернуть. */
+                    status_page_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookIntegration"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /**
+         * Создать webhook-интеграцию
+         * @description Секрет генерится сервером и возвращается ЕДИНОЖДЫ.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WebhookIntegrationCreate"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookIntegrationCreated"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-integrations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить webhook-интеграцию */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookIntegration"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Удалить интеграцию */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Изменить интеграцию (name/component_mapping) или перевыпустить секрет */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WebhookIntegrationPatch"];
+                };
+            };
+            responses: {
+                /** @description OK. Поле secret присутствует только если был запрошен regenerate_secret. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WebhookIntegrationCreated"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        trace?: never;
+    };
     "/pages/{slug}/subscribe": {
         parameters: {
             query?: never;
@@ -2435,7 +2599,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Входящий webhook PagerDuty */
+        /**
+         * Входящий webhook PagerDuty
+         * @description На MVP отложен — возвращает 501 (этап 5.3 реализует grafana/prometheus).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -2461,6 +2628,13 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["Unauthorized"];
+                /** @description Не реализовано (источник отложен) */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         delete?: never;
@@ -2478,7 +2652,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Входящий generic webhook */
+        /**
+         * Входящий generic webhook
+         * @description На MVP отложен — возвращает 501 (этап 5.3 реализует grafana/prometheus).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -2504,6 +2681,13 @@ export interface paths {
                     content?: never;
                 };
                 401: components["responses"]["Unauthorized"];
+                /** @description Не реализовано (источник отложен) */
+                501: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         delete?: never;
@@ -3249,6 +3433,56 @@ export interface components {
             last_used_at?: string | null;
             /** Format: date-time */
             created_at: string;
+        };
+        /** @enum {string} */
+        WebhookIntegrationSource: "grafana" | "prometheus" | "pagerduty" | "generic";
+        WebhookIntegration: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            status_page_id: string;
+            source: components["schemas"]["WebhookIntegrationSource"];
+            name: string;
+            component_mapping: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        WebhookIntegrationCreate: {
+            /** Format: uuid */
+            status_page_id: string;
+            source: components["schemas"]["WebhookIntegrationSource"];
+            name: string;
+            component_mapping?: {
+                [key: string]: unknown;
+            };
+        };
+        WebhookIntegrationPatch: {
+            name?: string;
+            component_mapping?: {
+                [key: string]: unknown;
+            };
+            regenerate_secret?: boolean;
+        };
+        WebhookIntegrationCreated: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            status_page_id: string;
+            source: components["schemas"]["WebhookIntegrationSource"];
+            name: string;
+            component_mapping: {
+                [key: string]: unknown;
+            };
+            /** @description HMAC-секрет; показывается единожды при создании/ротации */
+            secret?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string;
         };
         PublicPage: {
             name: string;

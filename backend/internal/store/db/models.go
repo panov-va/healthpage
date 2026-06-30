@@ -313,18 +313,20 @@ type DomainCertificate struct {
 }
 
 type Incident struct {
-	ID            uuid.UUID
-	StatusPageID  uuid.UUID
-	Title         string
-	CurrentStatus IncidentStatus
-	Impact        IncidentImpact
-	StartedAt     time.Time
-	ResolvedAt    *time.Time
-	Postmortem    *string
-	IsVisible     bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DeletedAt     *time.Time
+	ID               uuid.UUID
+	StatusPageID     uuid.UUID
+	Title            string
+	CurrentStatus    IncidentStatus
+	Impact           IncidentImpact
+	StartedAt        time.Time
+	ResolvedAt       *time.Time
+	Postmortem       *string
+	IsVisible        bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	DeletedAt        *time.Time
+	IntegrationID    *uuid.UUID
+	ExternalDedupKey *string
 }
 
 type IncidentComponent struct {
@@ -483,4 +485,15 @@ type User struct {
 	IsActive     bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type WebhookIntegration struct {
+	ID               uuid.UUID
+	StatusPageID     uuid.UUID
+	Source           string
+	Name             string
+	Secret           string
+	ComponentMapping []byte
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }

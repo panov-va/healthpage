@@ -1,13 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { updatePage } from "@/entities/page";
-import type { StatusPage } from "@/entities/page";
+import { updatePage, verifyDomain } from "@/entities/page";
+import type { DomainStatus, StatusPage } from "@/entities/page";
 import { HttpError } from "@/shared/api";
 import { Button, Field, Input, Select } from "@/shared/ui";
 
-// Настройки страницы: тема (акцент/тёмный режим/формат времени), логотип/favicon,
-// часовой пояс, локаль, название/описание (этап 4.1). Всё через PATCH /pages/{id}
-// (контракт не меняется). hide_powered_by/redirect/кастомный домен — отдельные задачи 4.x.
+// Настройки страницы: тема (этап 4.1), приватность по паролю (4.2), собственный домен (4.3).
+// Всё через PATCH /pages/{id}; проверка домена — POST /pages/{id}/domain/verify.
 
 type ThemeMode = "light" | "dark" | "auto";
 type TimeFormat = "24h" | "12h";
@@ -62,9 +61,33 @@ export function SettingsForm({
   const [timeFormat, setTimeFormat] = useState<TimeFormat>(initial.timeFormat);
   const [logoUrl, setLogoUrl] = useState(page.logo_url ?? "");
   const [faviconUrl, setFaviconUrl] = useState(page.favicon_url ?? "");
+  const [customDomain, setCustomDomain] = useState(page.custom_domain ?? "");
+  const [domainStatus, setDomainStatus] = useState<DomainStatus | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // При наличии сохранённого домена подтягиваем статус + целевой хост (cname_target для инструкции).
+  useEffect(() => {
+    if (page.custom_domain) {
+      verifyDomain(page.id)
+        .then(setDomainStatus)
+        .catch(() => setDomainStatus(null));
+    }
+  }, [page.id, page.custom_domain]);
+
+  async function checkDomain() {
+    setVerifying(true);
+    setError(null);
+    try {
+      setDomainStatus(await verifyDomain(page.id));
+    } catch (err) {
+      setError(err instanceof HttpError ? err.message : "Не удалось проверить домен");
+    } finally {
+      setVerifying(false);
+    }
+  }
 
   const zones = TIMEZONES.includes(timezone) ? TIMEZONES : [timezone, ...TIMEZONES];
 
@@ -83,6 +106,7 @@ export function SettingsForm({
         theme: { primary_color: color, mode, time_format: timeFormat },
         logo_url: logoUrl.trim() || null,
         favicon_url: faviconUrl.trim() || null,
+        custom_domain: customDomain.trim() || null,
       };
       // Пароль: задаём только при непустом вводе; снимаем при отметке «снять» (null).
       // Пустой ввод без отметки — не трогаем (текущий пароль нельзя прочитать).
@@ -217,6 +241,38 @@ export function SettingsForm({
           onChange={(e) => setFaviconUrl(e.target.value)}
         />
       </Field>
+
+      <h3 style={{ margin: "16px 0 8px" }}>Собственный домен</h3>
+      <Field label="Домен">
+        <Input
+          type="text"
+          placeholder="status.вашдомен.ru"
+          value={customDomain}
+          onChange={(e) => setCustomDomain(e.target.value)}
+        />
+      </Field>
+      {domainStatus?.cname_target ? (
+        <div className="hp-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+          Направьте CNAME вашего домена на <code>{domainStatus.cname_target}</code>, затем нажмите
+          «Проверить домен». После проверки TLS-сертификат выпускается автоматически.
+        </div>
+      ) : (
+        <div className="hp-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+          Укажите домен и сохраните, затем направьте на нас CNAME и проверьте привязку.
+        </div>
+      )}
+      {page.custom_domain ? (
+        <div style={{ marginBottom: 8 }}>
+          <span className={`hp-badge ${domainStatus?.domain_verified ?? page.domain_verified ? "hp-badge--ok" : ""}`}>
+            {(domainStatus?.domain_verified ?? page.domain_verified)
+              ? "Домен подтверждён"
+              : "Ожидает проверки CNAME"}
+          </span>{" "}
+          <Button type="button" onClick={checkDomain} disabled={verifying}>
+            {verifying ? "Проверка…" : "Проверить домен"}
+          </Button>
+        </div>
+      ) : null}
 
       {error && <div className="hp-error">{error}</div>}
       {saved && <div className="hp-muted">Сохранено</div>}

@@ -914,9 +914,56 @@ export interface paths {
                 };
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
                 422: components["responses"]["ValidationError"];
             };
         };
+        trace?: never;
+    };
+    "/pages/{id}/domain/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Проверить привязку собственного домена (CNAME)
+         * @description Резолвит CNAME домена страницы (custom_domain) и проверяет, что он указывает на наш целевой хост (cname_target). При успехе ставит domain_verified=true. Возвращает текущий статус привязки с целевым хостом для отображения инструкции оператору.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DomainStatus"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/pages/{id}/component-groups": {
@@ -2661,6 +2708,7 @@ export interface components {
             /** @enum {string} */
             visibility?: "public" | "private";
             password?: string | null;
+            custom_domain?: string | null;
             theme?: {
                 [key: string]: unknown;
             };
@@ -2668,6 +2716,11 @@ export interface components {
             favicon_url?: string | null;
             hide_powered_by?: boolean;
             redirect_url?: string | null;
+        };
+        DomainStatus: {
+            custom_domain?: string | null;
+            domain_verified: boolean;
+            cname_target: string;
         };
         PageAccessRequest: {
             password: string;
@@ -3014,6 +3067,15 @@ export interface components {
         };
         /** @description Не найдено */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Конфликт (например, домен/slug уже заняты) */
+        Conflict: {
             headers: {
                 [name: string]: unknown;
             };

@@ -43,6 +43,10 @@ type Config struct {
 	// сохранённый incoming-webhook URL.
 	SlackClientID     string
 	SlackClientSecret string
+
+	// Целевой хост для CNAME собственных доменов (этап 4.3): оператор направляет CNAME своего
+	// домена сюда, верификация сверяет резолв с этим значением.
+	CNAMETarget string
 }
 
 // IsProd сообщает, работаем ли в prod-режиме (влияет, напр., на флаг Secure у cookie).
@@ -74,6 +78,8 @@ func Load() Config {
 
 		SlackClientID:     env("SLACK_CLIENT_ID", ""),
 		SlackClientSecret: env("SLACK_CLIENT_SECRET", ""),
+
+		CNAMETarget: env("CNAME_TARGET", "cname.healthpage.ru"),
 	}
 	// Дефолт секрета отписки — операторский JWT-секрет (для dev/одно-процессного запуска).
 	if c.SubscriptionSecret == "" {

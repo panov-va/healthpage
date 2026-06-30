@@ -288,6 +288,10 @@ h3 {
   font-weight: 500;
   white-space: nowrap;
 }
+.hp-badge--ok {
+  border-color: #1a7f37;
+  color: #1a7f37;
+}
 
 /* ── timeline (лента обновлений) ── */
 .hp-timeline {

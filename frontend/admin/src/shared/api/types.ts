@@ -16,6 +16,7 @@ export type LoginRequest = Schemas["LoginRequest"];
 export type StatusPage = Schemas["StatusPage"];
 export type StatusPageCreate = Schemas["StatusPageCreate"];
 export type StatusPageUpdate = Schemas["StatusPageUpdate"];
+export type DomainStatus = Schemas["DomainStatus"];
 
 export type Component = Schemas["Component"];
 export type ComponentCreate = Schemas["ComponentCreate"];

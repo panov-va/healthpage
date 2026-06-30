@@ -178,6 +178,38 @@ func (q *Queries) ListStatusPagesByAccount(ctx context.Context, accountID uuid.U
 	return items, nil
 }
 
+const setCustomDomain = `-- name: SetCustomDomain :exec
+UPDATE status_pages SET custom_domain = $2, domain_verified = false
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+type SetCustomDomainParams struct {
+	ID           uuid.UUID
+	CustomDomain *string
+}
+
+// Задаёт/снимает собственный домен страницы (этап 4.3) и сбрасывает флаг верификации
+// (домен нужно проверить заново). NULL снимает домен. Уникальность — на уровне индекса.
+func (q *Queries) SetCustomDomain(ctx context.Context, arg SetCustomDomainParams) error {
+	_, err := q.db.Exec(ctx, setCustomDomain, arg.ID, arg.CustomDomain)
+	return err
+}
+
+const setDomainVerified = `-- name: SetDomainVerified :exec
+UPDATE status_pages SET domain_verified = $2 WHERE id = $1 AND deleted_at IS NULL
+`
+
+type SetDomainVerifiedParams struct {
+	ID             uuid.UUID
+	DomainVerified bool
+}
+
+// Отмечает результат проверки CNAME (этап 4.3).
+func (q *Queries) SetDomainVerified(ctx context.Context, arg SetDomainVerifiedParams) error {
+	_, err := q.db.Exec(ctx, setDomainVerified, arg.ID, arg.DomainVerified)
+	return err
+}
+
 const setStatusPagePassword = `-- name: SetStatusPagePassword :exec
 UPDATE status_pages SET password_hash = $2 WHERE id = $1 AND deleted_at IS NULL
 `

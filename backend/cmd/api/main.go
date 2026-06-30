@@ -62,14 +62,15 @@ func main() {
 	srv := &http.Server{
 		Addr: ":" + cfg.HTTPPort,
 		Handler: api.NewRouter(api.Deps{
-			Auth:       authSvc,
-			Store:      st,
-			Notifier:   notifier,
-			SubSecret:  cfg.SubscriptionSecret,
-			BaseURL:    cfg.BaseURL,
-			SlackOAuth: slackOAuth,
-			Prod:       cfg.IsProd(),
-			RefreshTTL: cfg.RefreshTTL,
+			Auth:        authSvc,
+			Store:       st,
+			Notifier:    notifier,
+			SubSecret:   cfg.SubscriptionSecret,
+			BaseURL:     cfg.BaseURL,
+			SlackOAuth:  slackOAuth,
+			Prod:        cfg.IsProd(),
+			RefreshTTL:  cfg.RefreshTTL,
+			CNAMETarget: cfg.CNAMETarget,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -30,22 +32,32 @@ type Deps struct {
 	SlackOAuth *slack.OAuth   // OAuth-клиент Slack; nil — подписка Slack выключена
 	Prod       bool           // влияет на флаг Secure у refresh-cookie
 	RefreshTTL time.Duration  // срок жизни refresh-cookie
+
+	// Кастомные домены (этап 4.3): целевой хост для CNAME и резолвер для верификации.
+	// CNAMEResolver nil → используется net.DefaultResolver.LookupCNAME (тесты инъектируют фейк).
+	CNAMETarget   string
+	CNAMEResolver func(ctx context.Context, host string) (string, error)
 }
 
 type server struct {
-	auth       *auth.Service
-	store      *store.Store
-	notifier   *notify.Engine
-	subSecret  string
-	baseURL    string
-	slackOAuth *slack.OAuth
-	prod       bool
-	refreshTTL time.Duration
+	auth          *auth.Service
+	store         *store.Store
+	notifier      *notify.Engine
+	subSecret     string
+	baseURL       string
+	slackOAuth    *slack.OAuth
+	prod          bool
+	refreshTTL    time.Duration
+	cnameTarget   string
+	cnameResolver func(ctx context.Context, host string) (string, error)
 }
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, prod: d.Prod, refreshTTL: d.RefreshTTL}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver}
+	if s.cnameResolver == nil {
+		s.cnameResolver = net.DefaultResolver.LookupCNAME
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -94,6 +106,7 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/pages/{page}", s.handleGetPage)
 			r.Patch("/pages/{page}", s.handlePatchPage)
 			r.Delete("/pages/{page}", s.handleDeletePage)
+			r.Post("/pages/{page}/domain/verify", s.handleVerifyDomain)
 
 			r.Get("/pages/{page}/component-groups", s.handleListGroups)
 			r.Post("/pages/{page}/component-groups", s.handleCreateGroup)

@@ -29,6 +29,16 @@ UPDATE status_pages SET
 WHERE id = $1 AND deleted_at IS NULL
 RETURNING *;
 
+-- name: SetCustomDomain :exec
+-- Задаёт/снимает собственный домен страницы (этап 4.3) и сбрасывает флаг верификации
+-- (домен нужно проверить заново). NULL снимает домен. Уникальность — на уровне индекса.
+UPDATE status_pages SET custom_domain = $2, domain_verified = false
+WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: SetDomainVerified :exec
+-- Отмечает результат проверки CNAME (этап 4.3).
+UPDATE status_pages SET domain_verified = $2 WHERE id = $1 AND deleted_at IS NULL;
+
 -- name: SetStatusPagePassword :exec
 -- Задаёт/снимает пароль приватной страницы (этап 4.2). NULL снимает пароль.
 -- Хранится только хэш (§9). UpdateStatusPage намеренно password_hash не трогает.

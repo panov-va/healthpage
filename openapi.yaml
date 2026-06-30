@@ -456,6 +456,7 @@ paths:
               schema: { $ref: '#/components/schemas/StatusPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationError' }
     delete:
       tags: [Pages]
@@ -464,6 +465,26 @@ paths:
         '204': { description: No Content }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{id}/domain/verify:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    post:
+      tags: [Pages]
+      summary: Проверить привязку собственного домена (CNAME)
+      description: >
+        Резолвит CNAME домена страницы (custom_domain) и проверяет, что он указывает на наш
+        целевой хост (cname_target). При успехе ставит domain_verified=true. Возвращает текущий
+        статус привязки с целевым хостом для отображения инструкции оператору.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DomainStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 
   /pages/{id}/component-groups:
     parameters:
@@ -1264,6 +1285,11 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Конфликт (например, домен/slug уже заняты)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     ValidationError:
       description: Ошибка валидации
       content:
@@ -1500,11 +1526,23 @@ components:
         # Пароль приватной страницы (write-only). Непустая строка — задать/сменить;
         # null — снять пароль. В ответах не возвращается (хранится только хэш, §9).
         password: { type: [string, "null"] }
+        # Собственный домен (этап 4.3). Непустая строка — задать (сбрасывает domain_verified
+        # до повторной проверки CNAME); null/"" — снять. Уникален среди страниц.
+        custom_domain: { type: [string, "null"] }
         theme: { type: object, additionalProperties: true }
         logo_url: { type: [string, "null"] }
         favicon_url: { type: [string, "null"] }
         hide_powered_by: { type: boolean }
         redirect_url: { type: [string, "null"] }
+
+    DomainStatus:
+      type: object
+      required: [domain_verified, cname_target]
+      properties:
+        custom_domain: { type: [string, "null"] }
+        domain_verified: { type: boolean }
+        # Целевой хост, на который оператор должен направить CNAME своего домена.
+        cname_target: { type: string }
 
     PageAccessRequest:
       type: object

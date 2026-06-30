@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/healthpage/backend/internal/domain"
@@ -64,7 +65,10 @@ type patchPageRequest struct {
 	Visibility    *string `json:"visibility"`
 	// Пароль приватной страницы (этап 4.2). Отсутствует → не трогаем; null или "" → снять;
 	// непустая строка → задать/сменить. RawMessage, чтобы отличить отсутствие от null.
-	Password      json.RawMessage `json:"password"`
+	Password json.RawMessage `json:"password"`
+	// Собственный домен (этап 4.3). Та же семантика RawMessage: отсутствие → не трогаем;
+	// null/"" → снять; строка → задать (сбрасывает domain_verified).
+	CustomDomain  json.RawMessage `json:"custom_domain"`
 	Theme         json.RawMessage `json:"theme"`
 	LogoURL       *string         `json:"logo_url"`
 	FaviconURL    *string         `json:"favicon_url"`
@@ -213,7 +217,45 @@ func (s *server) handlePatchPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Собственный домен (этап 4.3) — отдельный запрос (сбрасывает domain_verified, уникален).
+	if req.CustomDomain != nil {
+		domain, ok := parseCustomDomain(w, req.CustomDomain)
+		if !ok {
+			return
+		}
+		if err := s.store.SetCustomDomain(r.Context(), updated.ID, domain); err != nil {
+			if errors.Is(err, store.ErrDomainTaken) {
+				writeError(w, http.StatusConflict, "domain_taken", "домен уже привязан к другой странице")
+				return
+			}
+			writeServerError(w, err)
+			return
+		}
+		// Перечитываем, чтобы ответ отразил новый домен и сброшенный domain_verified.
+		if refreshed, err := s.store.StatusPageByID(r.Context(), updated.ID); err == nil {
+			updated = refreshed
+		}
+	}
+
 	writeJSON(w, http.StatusOK, toStatusPageResponse(updated))
+}
+
+// parseCustomDomain разбирает поле custom_domain из PATCH: JSON null или пустая строка → снять
+// домен (nil); непустая строка → нормализованный (lower, trim) домен. При ошибке пишет 422.
+func parseCustomDomain(w http.ResponseWriter, raw json.RawMessage) (*string, bool) {
+	if string(raw) == "null" {
+		return nil, true
+	}
+	var d string
+	if err := json.Unmarshal(raw, &d); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "custom_domain должен быть строкой или null")
+		return nil, false
+	}
+	d = strings.ToLower(strings.TrimSpace(d))
+	if d == "" {
+		return nil, true
+	}
+	return &d, true
 }
 
 // hashPagePassword разбирает поле password из PATCH: JSON null или пустая строка → снять

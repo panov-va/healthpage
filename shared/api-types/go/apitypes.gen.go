@@ -274,6 +274,13 @@ type ComponentUpdate struct {
 	ShowUptime    *bool               `json:"show_uptime,omitempty"`
 }
 
+// DomainStatus defines model for DomainStatus.
+type DomainStatus struct {
+	CnameTarget    string  `json:"cname_target"`
+	CustomDomain   *string `json:"custom_domain"`
+	DomainVerified bool    `json:"domain_verified"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Error struct {
@@ -623,6 +630,7 @@ type StatusPageCreateVisibility string
 
 // StatusPageUpdate defines model for StatusPageUpdate.
 type StatusPageUpdate struct {
+	CustomDomain  *string                     `json:"custom_domain"`
 	DefaultLocale *string                     `json:"default_locale,omitempty"`
 	Description   *string                     `json:"description,omitempty"`
 	FaviconUrl    *string                     `json:"favicon_url"`
@@ -739,6 +747,9 @@ type Slug = string
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
+
+// Conflict defines model for Conflict.
+type Conflict = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error

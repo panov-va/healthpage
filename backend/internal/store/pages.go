@@ -106,6 +106,29 @@ func (s *Store) UpdateStatusPage(ctx context.Context, p domain.StatusPage) (doma
 	return mapStatusPage(updated), nil
 }
 
+// ErrDomainTaken — собственный домен уже привязан к другой странице.
+var ErrDomainTaken = errors.New("store: custom domain already taken")
+
+// SetCustomDomain задаёт/снимает собственный домен страницы (этап 4.3) и сбрасывает
+// domain_verified. nil снимает домен. ErrDomainTaken при конфликте уникальности.
+func (s *Store) SetCustomDomain(ctx context.Context, id uuid.UUID, domain *string) error {
+	if err := s.q.SetCustomDomain(ctx, db.SetCustomDomainParams{ID: id, CustomDomain: domain}); err != nil {
+		if isUniqueViolation(err) {
+			return ErrDomainTaken
+		}
+		return fmt.Errorf("store: set custom domain: %w", err)
+	}
+	return nil
+}
+
+// SetDomainVerified фиксирует результат проверки CNAME (этап 4.3).
+func (s *Store) SetDomainVerified(ctx context.Context, id uuid.UUID, verified bool) error {
+	if err := s.q.SetDomainVerified(ctx, db.SetDomainVerifiedParams{ID: id, DomainVerified: verified}); err != nil {
+		return fmt.Errorf("store: set domain verified: %w", err)
+	}
+	return nil
+}
+
 // SetStatusPagePassword задаёт хэш пароля приватной страницы (этап 4.2); nil снимает пароль.
 func (s *Store) SetStatusPagePassword(ctx context.Context, id uuid.UUID, passwordHash *string) error {
 	if err := s.q.SetStatusPagePassword(ctx, db.SetStatusPagePasswordParams{

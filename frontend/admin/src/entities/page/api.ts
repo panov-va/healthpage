@@ -1,5 +1,6 @@
 import { api } from "@/shared/api";
 import type {
+  AllowedEmail,
   DomainStatus,
   StatusPage,
   StatusPageCreate,
@@ -30,4 +31,17 @@ export function deletePage(id: string): Promise<void> {
 // статус привязки (verified + целевой хост для инструкции).
 export function verifyDomain(id: string): Promise<DomainStatus> {
   return api.post<DomainStatus>(`/pages/${id}/domain/verify`);
+}
+
+// Список email доступа к приватной странице (этап 4.2.1).
+export function listAllowedEmails(pageId: string): Promise<AllowedEmail[]> {
+  return api.get<AllowedEmail[]>(`/pages/${pageId}/allowed-emails`);
+}
+
+export function addAllowedEmail(pageId: string, email: string): Promise<AllowedEmail> {
+  return api.post<AllowedEmail>(`/pages/${pageId}/allowed-emails`, { email });
+}
+
+export function deleteAllowedEmail(id: string): Promise<void> {
+  return api.delete<void>(`/allowed-emails/${id}`);
 }

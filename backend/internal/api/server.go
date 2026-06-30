@@ -77,6 +77,8 @@ func NewRouter(d Deps) http.Handler {
 		// Публичные read-only эндпоинты (без авторизации). Параметр сегмента страницы — {page}
 		// (единое имя для chi); здесь трактуется как slug.
 		r.Post("/pages/{page}/access", s.handlePageAccess)
+		r.Post("/pages/{page}/access/request-link", s.handleRequestAccessLink)
+		r.Get("/pages/{page}/access/verify", s.handleVerifyAccessLink)
 		r.Get("/pages/{page}/summary", s.handlePublicSummary)
 		r.Get("/pages/{page}/components", s.handlePublicComponents)
 		r.Get("/pages/{page}/incidents", s.handlePublicIncidents)
@@ -93,6 +95,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/subscribe/slack/callback", s.handleSlackCallback)
 
 		// Публичные фиды (этап 3.6).
+		r.Get("/pages/{page}/badge.svg", s.handleBadge)
 		r.Get("/pages/{page}/rss", s.handleRSS)
 		r.Get("/pages/{page}/calendar.ics", s.handleICal)
 
@@ -107,6 +110,9 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/pages/{page}", s.handlePatchPage)
 			r.Delete("/pages/{page}", s.handleDeletePage)
 			r.Post("/pages/{page}/domain/verify", s.handleVerifyDomain)
+			r.Get("/pages/{page}/allowed-emails", s.handleListAllowedEmails)
+			r.Post("/pages/{page}/allowed-emails", s.handleAddAllowedEmail)
+			r.Delete("/allowed-emails/{id}", s.handleDeleteAllowedEmail)
 
 			r.Get("/pages/{page}/component-groups", s.handleListGroups)
 			r.Post("/pages/{page}/component-groups", s.handleCreateGroup)

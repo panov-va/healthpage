@@ -82,6 +82,8 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 | worker-webhook | Доставка Slack (Block Kit) + исходящие webhook | `worker-webhook` | — | создан (3.9, q.slack), в compose |
 | worker-billing | Рекуррентные списания | `worker-billing` | — | не создан |
 | worker-import | Миграция данных | `worker-import` | — | не создан |
+| tls-manager | ACME-выпуск/продление TLS кастом-доменов | `tls-manager` | — | создан (4.3.2), compose-профиль `edge` |
+| edge | Прокси кастом-доменов: TLS по SNI + HTTP-01 + роутинг | `edge` | 80/443 | создан (4.3.3), compose-профиль `edge` |
 
 > Логические связи сервисов и очередей — в `DESIGN.md §8` и `§8.1`, не дублировать здесь.
 
@@ -150,10 +152,25 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 | `YOOKASSA_SHOP_ID` `YOOKASSA_SECRET_KEY` | credentials ЮKassa |
 | `YOOKASSA_WEBHOOK_SECRET` | проверка подписи webhook |
 
-### Кастомные домены / TLS
-| Переменная | Назначение |
-|-----------|-----------|
-| (ACME/Let's Encrypt настройки — заполнить на этапе 4) | автонастройка TLS для CNAME клиентов |
+### Кастомные домены / TLS (этап 4.3)
+| Переменная | Сервис | Назначение |
+|-----------|--------|-----------|
+| `CNAME_TARGET` | api | Хост, на который клиент направляет CNAME своего домена; verify сверяет резолв. Дефолт `cname.healthpage.ru` |
+| `ACME_EMAIL` | tls-manager | Контактный email Let's Encrypt. Пусто → tls-manager не стартует |
+| `ACME_DIRECTORY_URL` | tls-manager | ACME-директория; для тестов — staging `https://acme-staging-v02.api.letsencrypt.org/directory` |
+| `ACME_RENEW_INTERVAL` / `ACME_RENEW_BEFORE` | tls-manager | Период цикла (12h) / порог продления (30d) |
+| `EDGE_API_URL` / `EDGE_SSR_URL` | edge | Origin'ы api и public-ssr (в сети compose — имена сервисов) |
+| `EDGE_HTTP_ADDR` / `EDGE_HTTPS_ADDR` | edge | Адреса :80 / :443 |
+
+> **Поток:** клиент ставит `status.его-домен` CNAME → `CNAME_TARGET`; оператор жмёт «Проверить домен»
+> (`POST /pages/{id}/domain/verify` → `domain_verified=true`). `tls-manager` периодически выпускает/
+> продлевает серты для verified-доменов (ACME HTTP-01: challenge кладётся в БД, `edge` отдаёт на :80),
+> хранит их в `domain_certificates`. `edge` терминирует TLS по SNI (серт из БД), роутит `/api/*` → api,
+> корень кастом-домена → `/status/{slug}`, прочее → public-ssr. Запуск: `docker compose --profile edge up`.
+>
+> **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** выпуск реальных сертификатов и HTTPS-доступ по
+> домену **не проверены локально** (нужны публичный DNS, открытые :80/:443, доступность Let's Encrypt).
+> Проверить на прод-деплое: сначала на ACME staging, затем prod. Серты — в БД (не на диске).
 
 ---
 

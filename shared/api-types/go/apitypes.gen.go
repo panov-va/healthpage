@@ -166,6 +166,29 @@ const (
 	SubscriptionStatusPending  SubscriptionStatus = "pending"
 )
 
+// Defines values for GetPagesSlugBadgeSvgParamsLang.
+const (
+	En GetPagesSlugBadgeSvgParamsLang = "en"
+	Ru GetPagesSlugBadgeSvgParamsLang = "ru"
+)
+
+// AccessLinkRequest defines model for AccessLinkRequest.
+type AccessLinkRequest struct {
+	Email string `json:"email"`
+}
+
+// AllowedEmail defines model for AllowedEmail.
+type AllowedEmail struct {
+	CreatedAt *time.Time         `json:"created_at,omitempty"`
+	Email     string             `json:"email"`
+	Id        openapi_types.UUID `json:"id"`
+}
+
+// AllowedEmailCreate defines model for AllowedEmailCreate.
+type AllowedEmailCreate struct {
+	Email string `json:"email"`
+}
+
 // AuthResult defines model for AuthResult.
 type AuthResult struct {
 	AccessToken string `json:"access_token"`
@@ -600,12 +623,14 @@ type StatusPage struct {
 	Description    *string                 `json:"description,omitempty"`
 	DomainVerified *bool                   `json:"domain_verified,omitempty"`
 	FaviconUrl     *string                 `json:"favicon_url"`
+	FromEmail      *string                 `json:"from_email"`
 	HidePoweredBy  *bool                   `json:"hide_powered_by,omitempty"`
 	Id             openapi_types.UUID      `json:"id"`
 	LogoUrl        *string                 `json:"logo_url"`
 	Name           string                  `json:"name"`
 	RedirectUrl    *string                 `json:"redirect_url"`
 	Slug           string                  `json:"slug"`
+	SmtpConfigured *bool                   `json:"smtp_configured,omitempty"`
 	Theme          *map[string]interface{} `json:"theme,omitempty"`
 	Timezone       *string                 `json:"timezone,omitempty"`
 	UpdatedAt      *time.Time              `json:"updated_at,omitempty"`
@@ -634,11 +659,13 @@ type StatusPageUpdate struct {
 	DefaultLocale *string                     `json:"default_locale,omitempty"`
 	Description   *string                     `json:"description,omitempty"`
 	FaviconUrl    *string                     `json:"favicon_url"`
+	FromEmail     *string                     `json:"from_email"`
 	HidePoweredBy *bool                       `json:"hide_powered_by,omitempty"`
 	LogoUrl       *string                     `json:"logo_url"`
 	Name          *string                     `json:"name,omitempty"`
 	Password      *string                     `json:"password"`
 	RedirectUrl   *string                     `json:"redirect_url"`
+	SmtpConfig    *map[string]interface{}     `json:"smtp_config"`
 	Theme         *map[string]interface{}     `json:"theme,omitempty"`
 	Timezone      *string                     `json:"timezone,omitempty"`
 	Visibility    *StatusPageUpdateVisibility `json:"visibility,omitempty"`
@@ -816,6 +843,22 @@ type GetMaintenancesParams struct {
 	PerPage      *PerPage            `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
 
+// GetPagesSlugAccessVerifyParams defines parameters for GetPagesSlugAccessVerify.
+type GetPagesSlugAccessVerifyParams struct {
+	Token string `form:"token" json:"token"`
+}
+
+// GetPagesSlugBadgeSvgParams defines parameters for GetPagesSlugBadgeSvg.
+type GetPagesSlugBadgeSvgParams struct {
+	Lang *GetPagesSlugBadgeSvgParamsLang `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
+}
+
+// GetPagesSlugBadgeSvgParamsLang defines parameters for GetPagesSlugBadgeSvg.
+type GetPagesSlugBadgeSvgParamsLang string
+
 // GetPagesSlugCalendarIcsParams defines parameters for GetPagesSlugCalendarIcs.
 type GetPagesSlugCalendarIcsParams struct {
 	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
@@ -973,11 +1016,17 @@ type PostPagesJSONRequestBody = StatusPageCreate
 // PatchPagesIdJSONRequestBody defines body for PatchPagesId for application/json ContentType.
 type PatchPagesIdJSONRequestBody = StatusPageUpdate
 
+// PostPagesIdAllowedEmailsJSONRequestBody defines body for PostPagesIdAllowedEmails for application/json ContentType.
+type PostPagesIdAllowedEmailsJSONRequestBody = AllowedEmailCreate
+
 // PostPagesIdComponentGroupsJSONRequestBody defines body for PostPagesIdComponentGroups for application/json ContentType.
 type PostPagesIdComponentGroupsJSONRequestBody = ComponentGroupCreate
 
 // PostPagesSlugAccessJSONRequestBody defines body for PostPagesSlugAccess for application/json ContentType.
 type PostPagesSlugAccessJSONRequestBody = PageAccessRequest
+
+// PostPagesSlugAccessRequestLinkJSONRequestBody defines body for PostPagesSlugAccessRequestLink for application/json ContentType.
+type PostPagesSlugAccessRequestLinkJSONRequestBody = AccessLinkRequest
 
 // PostPagesSlugSubscribeJSONRequestBody defines body for PostPagesSlugSubscribe for application/json ContentType.
 type PostPagesSlugSubscribeJSONRequestBody = SubscribeRequest

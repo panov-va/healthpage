@@ -49,6 +49,12 @@ type ConfirmPayload struct {
 	ConfirmToken string `json:"confirm_token"`
 }
 
+// AccessLinkPayload — содержимое письма magic-link доступа к приватной странице (4.2.1).
+// Несёт токен; ссылку верификации воркер строит из публичного baseURL + slug.
+type AccessLinkPayload struct {
+	Token string `json:"token"`
+}
+
 func incidentPayload(inc domain.Incident, body string) IncidentPayload {
 	comps := make([]string, len(inc.Components))
 	for i, c := range inc.Components {

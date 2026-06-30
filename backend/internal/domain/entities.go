@@ -122,6 +122,14 @@ type StatusPage struct {
 	DeletedAt      *time.Time
 }
 
+// AllowedEmail — адрес из списка доступа приватной страницы (этап 4.2.1, magic-link).
+type AllowedEmail struct {
+	ID           uuid.UUID
+	StatusPageID uuid.UUID
+	Email        string
+	CreatedAt    time.Time
+}
+
 // IsPrivate сообщает, закрыта ли страница от анонимного доступа.
 func (p StatusPage) IsPrivate() bool { return p.Visibility == VisibilityPrivate }
 

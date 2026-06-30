@@ -162,6 +162,50 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /pages/{slug}/access/request-link:
+    post:
+      tags: [Public]
+      summary: Запросить magic-link доступа к приватной странице по email
+      description: >
+        Если email есть в списке разрешённых для приватной страницы (этап 4.2.1) — отправляет
+        письмо со ссылкой доступа. Всегда отвечает 202 (не раскрывает, разрешён ли адрес).
+        Публичная страница пароля/доступа не требует → 404.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccessLinkRequest' }
+      responses:
+        '202': { description: Принято (если адрес разрешён — письмо отправлено) }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /pages/{slug}/access/verify:
+    get:
+      tags: [Public]
+      summary: Обменять magic-link токен на токен доступа
+      description: >
+        Проверяет токен из письма magic-link (этап 4.2.1): подпись, срок, наличие email в списке
+        разрешённых — и возвращает токен доступа (как POST /access).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Доступ предоставлен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageAccessResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /pages/{slug}/summary:
     get:
       tags: [Public]
@@ -321,6 +365,29 @@ paths:
           description: OK
           content:
             text/calendar:
+              schema: { type: string }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/badge.svg:
+    get:
+      tags: [Public]
+      summary: Встраиваемый SVG-бейдж статуса (виджет)
+      description: >
+        Возвращает SVG-бейдж с общим статусом страницы (этап 4.6) для встраивания через <img>.
+        Локаль — параметр lang (ru|en). Приватные страницы недоступны без токена доступа.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - name: lang
+          in: query
+          schema: { type: string, enum: [ru, en] }
+        - $ref: '#/components/parameters/PageAccessHeader'
+      responses:
+        '200':
+          description: OK
+          content:
+            image/svg+xml:
               schema: { type: string }
         '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -485,6 +552,52 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationError' }
+
+  /pages/{id}/allowed-emails:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Pages]
+      summary: Список email с доступом к приватной странице (этап 4.2.1)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AllowedEmail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Pages]
+      summary: Добавить email в список доступа
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AllowedEmailCreate' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AllowedEmail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /allowed-emails/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    delete:
+      tags: [Pages]
+      summary: Удалить email из списка доступа
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /pages/{id}/component-groups:
     parameters:
@@ -1501,6 +1614,10 @@ components:
         favicon_url: { type: [string, "null"] }
         hide_powered_by: { type: boolean }
         redirect_url: { type: [string, "null"] }
+        # Адрес отправителя писем (премиум). Сам smtp_config (с паролем) в ответах НЕ отдаётся —
+        # вместо него булев флаг smtp_configured.
+        from_email: { type: [string, "null"] }
+        smtp_configured: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
 
@@ -1534,6 +1651,11 @@ components:
         favicon_url: { type: [string, "null"] }
         hide_powered_by: { type: boolean }
         redirect_url: { type: [string, "null"] }
+        # Кастомный SMTP страницы (этап 4.5, премиум). Объект {host,port,username,password,from,tls}
+        # — задать; null — снять (вернуться на системный SMTP). Write-only (в ответах не отдаётся).
+        smtp_config: { type: [object, "null"], additionalProperties: true }
+        # Адрес отправителя писем (этап 4.5). Строка — задать; null/"" — снять.
+        from_email: { type: [string, "null"] }
 
     DomainStatus:
       type: object
@@ -1543,6 +1665,26 @@ components:
         domain_verified: { type: boolean }
         # Целевой хост, на который оператор должен направить CNAME своего домена.
         cname_target: { type: string }
+
+    AllowedEmail:
+      type: object
+      required: [id, email]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        created_at: { type: string, format: date-time }
+
+    AllowedEmailCreate:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string }
+
+    AccessLinkRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string }
 
     PageAccessRequest:
       type: object

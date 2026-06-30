@@ -239,6 +239,21 @@ type Account struct {
 	UpdatedAt   time.Time
 }
 
+type AcmeAccount struct {
+	DirectoryUrl string
+	Email        string
+	PrivateKey   string
+	Registration []byte
+	CreatedAt    time.Time
+}
+
+type AcmeChallenge struct {
+	Token     string
+	KeyAuth   string
+	Domain    string
+	CreatedAt time.Time
+}
+
 type Component struct {
 	ID            uuid.UUID
 	StatusPageID  uuid.UUID
@@ -275,6 +290,15 @@ type ComponentStatusHistory struct {
 	Source      string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+}
+
+type DomainCertificate struct {
+	Domain    string
+	CertPem   string
+	KeyPem    string
+	IssuedAt  time.Time
+	ExpiresAt time.Time
+	UpdatedAt time.Time
 }
 
 type Incident struct {
@@ -382,6 +406,13 @@ type Notification struct {
 	SentAt       *time.Time
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+}
+
+type PageAllowedEmail struct {
+	ID           uuid.UUID
+	StatusPageID uuid.UUID
+	Email        string
+	CreatedAt    time.Time
 }
 
 type RefreshToken struct {

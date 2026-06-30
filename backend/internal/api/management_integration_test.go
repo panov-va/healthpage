@@ -106,19 +106,31 @@ func TestManagementIntegration(t *testing.T) {
 		t.Fatalf("status change: got %q", patched.CurrentStatus)
 	}
 
-	// patch page: имя + брендинг/тема/часовой пояс (этап 4.1)
+	// patch page: имя + брендинг/тема/часовой пояс (этап 4.1) + white-label/SMTP (4.4/4.5)
 	var renamed statusPageResponse
 	patchJSON(t, srv.URL+"/api/v1/pages/"+page.ID, token, map[string]any{
-		"name":     "Renamed",
-		"timezone": "Europe/Moscow",
-		"logo_url": "https://cdn.example.test/logo.png",
-		"theme":    map[string]any{"primary_color": "#2563eb", "mode": "dark"},
+		"name":            "Renamed",
+		"timezone":        "Europe/Moscow",
+		"logo_url":        "https://cdn.example.test/logo.png",
+		"theme":           map[string]any{"primary_color": "#2563eb", "mode": "dark"},
+		"hide_powered_by": true,
+		"from_email":      "status@acme.test",
+		"smtp_config":     map[string]any{"host": "smtp.acme.test", "port": 587, "username": "u", "password": "secret", "tls": false},
 	}, http.StatusOK, &renamed)
 	if renamed.Name != "Renamed" {
 		t.Fatalf("patch page: got %q", renamed.Name)
 	}
 	if renamed.Timezone != "Europe/Moscow" {
 		t.Fatalf("patch page timezone: got %q", renamed.Timezone)
+	}
+	if !renamed.HidePoweredBy {
+		t.Fatal("hide_powered_by должен быть true после patch")
+	}
+	if renamed.FromEmail == nil || *renamed.FromEmail != "status@acme.test" {
+		t.Fatalf("from_email: %v", renamed.FromEmail)
+	}
+	if !renamed.SMTPConfigured {
+		t.Fatal("smtp_configured должен быть true после установки smtp_config")
 	}
 
 	// delete child

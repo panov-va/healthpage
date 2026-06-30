@@ -260,6 +260,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pages/{slug}/access/request-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Запросить magic-link доступа к приватной странице по email
+         * @description Если email есть в списке разрешённых для приватной страницы (этап 4.2.1) — отправляет письмо со ссылкой доступа. Всегда отвечает 202 (не раскрывает, разрешён ли адрес). Публичная страница пароля/доступа не требует → 404.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Идентификатор страницы (поддомен) */
+                    slug: components["parameters"]["Slug"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AccessLinkRequest"];
+                };
+            };
+            responses: {
+                /** @description Принято (если адрес разрешён — письмо отправлено) */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pages/{slug}/access/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Обменять magic-link токен на токен доступа
+         * @description Проверяет токен из письма magic-link (этап 4.2.1): подпись, срок, наличие email в списке разрешённых — и возвращает токен доступа (как POST /access).
+         */
+        get: {
+            parameters: {
+                query: {
+                    token: string;
+                };
+                header?: never;
+                path: {
+                    /** @description Идентификатор страницы (поддомен) */
+                    slug: components["parameters"]["Slug"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Доступ предоставлен */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PageAccessResult"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pages/{slug}/summary": {
         parameters: {
             query?: never;
@@ -629,6 +721,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pages/{slug}/badge.svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Встраиваемый SVG-бейдж статуса (виджет)
+         * @description Возвращает SVG-бейдж с общим статусом страницы (этап 4.6) для встраивания через <img>. Локаль — параметр lang (ru|en). Приватные страницы недоступны без токена доступа.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    lang?: "ru" | "en";
+                };
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
+                path: {
+                    /** @description Идентификатор страницы (поддомен) */
+                    slug: components["parameters"]["Slug"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "image/svg+xml": string;
+                    };
+                };
+                401: components["responses"]["PasswordRequired"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/components": {
         parameters: {
             query?: never;
@@ -961,6 +1102,118 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pages/{id}/allowed-emails": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        /** Список email с доступом к приватной странице (этап 4.2.1) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AllowedEmail"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        /** Добавить email в список доступа */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AllowedEmailCreate"];
+                };
+            };
+            responses: {
+                /** @description Создано */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AllowedEmail"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/allowed-emails/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Удалить email из списка доступа */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -2683,6 +2936,8 @@ export interface components {
             favicon_url?: string | null;
             hide_powered_by?: boolean;
             redirect_url?: string | null;
+            from_email?: string | null;
+            smtp_configured?: boolean;
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
@@ -2716,11 +2971,28 @@ export interface components {
             favicon_url?: string | null;
             hide_powered_by?: boolean;
             redirect_url?: string | null;
+            smtp_config?: {
+                [key: string]: unknown;
+            } | null;
+            from_email?: string | null;
         };
         DomainStatus: {
             custom_domain?: string | null;
             domain_verified: boolean;
             cname_target: string;
+        };
+        AllowedEmail: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        AllowedEmailCreate: {
+            email: string;
+        };
+        AccessLinkRequest: {
+            email: string;
         };
         PageAccessRequest: {
             password: string;

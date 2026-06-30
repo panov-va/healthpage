@@ -138,5 +138,39 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  # ACME-выпуск/продление TLS кастомных доменов (этап 4.3.2). Требует публичной доступности
+  # доменов на :80 (через edge) — в dev обычно не запускается; для прод задать ACME_EMAIL.
+  tls-manager:
+    build:
+      context: ./backend
+    entrypoint: ["/app/tls-manager"]
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${DATABASE_URL}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_DIRECTORY_URL: ${ACME_DIRECTORY_URL:-https://acme-v02.api.letsencrypt.org/directory}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["edge"]
+
+  # Edge-прокси кастомных доменов (этап 4.3.3): TLS по SNI + HTTP-01 + роутинг по Host.
+  edge:
+    build:
+      context: ./backend
+    entrypoint: ["/app/edge"]
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${DATABASE_URL}
+      EDGE_API_URL: ${EDGE_API_URL:-http://api:8080}
+      EDGE_SSR_URL: ${EDGE_SSR_URL:-http://public-ssr:3000}
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["edge"]
+
 volumes:
   pgdata:

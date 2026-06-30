@@ -47,13 +47,17 @@ interface Dict {
   prevPage: string;
   nextPage: string;
 
-  // Парольный гейт приватной страницы (этап 4.2).
+  // Парольный гейт приватной страницы (этап 4.2) + magic-link по email (4.2.1).
   access: {
     title: string;
     prompt: string;
     passwordLabel: string;
     submit: string;
     error: string;
+    or: string;
+    emailLabel: string;
+    requestLink: string;
+    linkSent: string;
   };
 }
 
@@ -116,6 +120,10 @@ const ru: Dict = {
     passwordLabel: "Пароль",
     submit: "Войти",
     error: "Неверный пароль. Попробуйте ещё раз.",
+    or: "или",
+    emailLabel: "Доступ по email",
+    requestLink: "Прислать ссылку",
+    linkSent: "Если адрес в списке доступа, мы отправили ссылку на почту.",
   },
 };
 
@@ -178,6 +186,10 @@ const en: Dict = {
     passwordLabel: "Password",
     submit: "Enter",
     error: "Wrong password. Please try again.",
+    or: "or",
+    emailLabel: "Access by email",
+    requestLink: "Send link",
+    linkSent: "If your address is on the access list, we've emailed you a link.",
   },
 };
 

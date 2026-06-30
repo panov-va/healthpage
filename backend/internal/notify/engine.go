@@ -92,6 +92,23 @@ func (e *Engine) SendConfirmation(ctx context.Context, sub domain.Subscriber, co
 	})
 }
 
+// SendAccessLink публикует транзакционное письмо magic-link доступа к приватной странице (4.2.1)
+// на произвольный (разрешённый) email. Без журнала уведомлений (нет подписчика) — NotificationID
+// пустой; воркер обрабатывает такое сообщение как транзакционное (без идемпотентности/MarkSent).
+func (e *Engine) SendAccessLink(ctx context.Context, pageID uuid.UUID, email, token string) error {
+	body, err := json.Marshal(AccessLinkPayload{Token: token})
+	if err != nil {
+		return fmt.Errorf("notify: marshal access link payload: %w", err)
+	}
+	return e.publish(ctx, Message{
+		Channel:      string(domain.ChannelEmail),
+		Event:        string(domain.EventAccessLink),
+		Address:      email,
+		Payload:      body,
+		StatusPageID: pageID.String(),
+	})
+}
+
 // dispatch — общий фан-аут: разослать событие подходящим подтверждённым push-подписчикам.
 // На каждого: запись журнала (pending) + публикация Message с её id. Ошибки публикации не
 // прерывают рассылку (запись остаётся pending — восстановима); собираются и возвращаются.

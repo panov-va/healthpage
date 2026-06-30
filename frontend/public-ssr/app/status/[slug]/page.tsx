@@ -33,7 +33,11 @@ export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: { slug: string };
-  searchParams: { lang?: string | string[]; access_error?: string | string[] };
+  searchParams: {
+    lang?: string | string[];
+    access_error?: string | string[];
+    link_sent?: string | string[];
+  };
 }
 
 export async function generateMetadata({ params }: PageProps) {
@@ -105,15 +109,14 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
   } catch (err) {
     if (err instanceof PageAccessRequiredError) {
       // Приватная страница без валидного токена — показываем парольный гейт (этап 4.2).
+      const flag = (v: string | string[] | undefined) =>
+        (Array.isArray(v) ? v[0] : v) === "1";
       return (
         <AccessGate
           slug={params.slug}
           locale={locale}
-          error={
-            (Array.isArray(searchParams.access_error)
-              ? searchParams.access_error[0]
-              : searchParams.access_error) === "1"
-          }
+          error={flag(searchParams.access_error)}
+          linkSent={flag(searchParams.link_sent)}
         />
       );
     }

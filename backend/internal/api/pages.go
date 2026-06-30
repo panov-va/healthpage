@@ -30,6 +30,8 @@ type statusPageResponse struct {
 	FaviconURL     *string         `json:"favicon_url"`
 	HidePoweredBy  bool            `json:"hide_powered_by"`
 	RedirectURL    *string         `json:"redirect_url"`
+	FromEmail      *string         `json:"from_email"`
+	SMTPConfigured bool            `json:"smtp_configured"`
 	CreatedAt      string          `json:"created_at"`
 	UpdatedAt      string          `json:"updated_at"`
 }
@@ -44,6 +46,7 @@ func toStatusPageResponse(p domain.StatusPage) statusPageResponse {
 		Slug: p.Slug, Timezone: p.Timezone, DefaultLocale: p.DefaultLocale, Visibility: string(p.Visibility),
 		CustomDomain: p.CustomDomain, DomainVerified: p.DomainVerified, Theme: json.RawMessage(theme),
 		LogoURL: p.LogoURL, FaviconURL: p.FaviconURL, HidePoweredBy: p.HidePoweredBy, RedirectURL: p.RedirectURL,
+		FromEmail: p.FromEmail, SMTPConfigured: len(p.SMTPConfig) > 0 && string(p.SMTPConfig) != "null",
 		CreatedAt: p.CreatedAt.UTC().Format(time.RFC3339), UpdatedAt: p.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
@@ -74,6 +77,9 @@ type patchPageRequest struct {
 	FaviconURL    *string         `json:"favicon_url"`
 	HidePoweredBy *bool           `json:"hide_powered_by"`
 	RedirectURL   *string         `json:"redirect_url"`
+	// Кастомный SMTP (этап 4.5). RawMessage: отсутствие → не трогаем; null → снять; объект → задать.
+	SMTPConfig json.RawMessage `json:"smtp_config"`
+	FromEmail  json.RawMessage `json:"from_email"`
 }
 
 func (s *server) handleListPages(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +243,56 @@ func (s *server) handlePatchPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Кастомный SMTP / from_email (этап 4.5) — отдельные колонки; обновляются вместе.
+	if req.SMTPConfig != nil || req.FromEmail != nil {
+		smtpCfg := updated.SMTPConfig
+		fromEmail := updated.FromEmail
+		if req.SMTPConfig != nil {
+			if string(req.SMTPConfig) == "null" {
+				smtpCfg = nil
+			} else {
+				var obj map[string]any
+				if err := json.Unmarshal(req.SMTPConfig, &obj); err != nil {
+					writeError(w, http.StatusUnprocessableEntity, "invalid_request", "smtp_config должен быть объектом или null")
+					return
+				}
+				smtpCfg = []byte(req.SMTPConfig)
+			}
+		}
+		if req.FromEmail != nil {
+			from, ok := parseNullableString(w, req.FromEmail, "from_email")
+			if !ok {
+				return
+			}
+			fromEmail = from
+		}
+		if err := s.store.SetStatusPageSMTP(r.Context(), updated.ID, smtpCfg, fromEmail); err != nil {
+			writeServerError(w, err)
+			return
+		}
+		if refreshed, err := s.store.StatusPageByID(r.Context(), updated.ID); err == nil {
+			updated = refreshed
+		}
+	}
+
 	writeJSON(w, http.StatusOK, toStatusPageResponse(updated))
+}
+
+// parseNullableString разбирает JSON-поле: null/"" → nil; непустая строка (trim) → &s. 422 при ошибке.
+func parseNullableString(w http.ResponseWriter, raw json.RawMessage, field string) (*string, bool) {
+	if string(raw) == "null" {
+		return nil, true
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", field+" должен быть строкой или null")
+		return nil, false
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, true
+	}
+	return &s, true
 }
 
 // parseCustomDomain разбирает поле custom_domain из PATCH: JSON null или пустая строка → снять

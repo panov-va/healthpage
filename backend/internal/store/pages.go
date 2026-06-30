@@ -129,6 +129,16 @@ func (s *Store) SetDomainVerified(ctx context.Context, id uuid.UUID, verified bo
 	return nil
 }
 
+// SetStatusPageSMTP задаёт/снимает кастомный SMTP и адрес отправителя (этап 4.5). nil снимает.
+func (s *Store) SetStatusPageSMTP(ctx context.Context, id uuid.UUID, smtpConfig []byte, fromEmail *string) error {
+	if err := s.q.SetStatusPageSMTP(ctx, db.SetStatusPageSMTPParams{
+		ID: id, SmtpConfig: smtpConfig, FromEmail: fromEmail,
+	}); err != nil {
+		return fmt.Errorf("store: set page smtp: %w", err)
+	}
+	return nil
+}
+
 // SetStatusPagePassword задаёт хэш пароля приватной страницы (этап 4.2); nil снимает пароль.
 func (s *Store) SetStatusPagePassword(ctx context.Context, id uuid.UUID, passwordHash *string) error {
 	if err := s.q.SetStatusPagePassword(ctx, db.SetStatusPagePasswordParams{

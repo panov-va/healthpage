@@ -39,6 +39,10 @@ WHERE id = $1 AND deleted_at IS NULL;
 -- Отмечает результат проверки CNAME (этап 4.3).
 UPDATE status_pages SET domain_verified = $2 WHERE id = $1 AND deleted_at IS NULL;
 
+-- name: SetStatusPageSMTP :exec
+-- Задаёт/снимает кастомный SMTP и адрес отправителя страницы (этап 4.5). NULL — снять.
+UPDATE status_pages SET smtp_config = $2, from_email = $3 WHERE id = $1 AND deleted_at IS NULL;
+
 -- name: SetStatusPagePassword :exec
 -- Задаёт/снимает пароль приватной страницы (этап 4.2). NULL снимает пароль.
 -- Хранится только хэш (§9). UpdateStatusPage намеренно password_hash не трогает.

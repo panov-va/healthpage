@@ -18,6 +18,7 @@ type RenderInput struct {
 	PageURL        string // публичная страница статуса
 	UnsubscribeURL string // для уведомлений (не для confirm)
 	ConfirmURL     string // только для subscriber_confirm
+	AccessURL      string // только для access_link (magic-link 4.2.1)
 	Incident       *notify.IncidentPayload
 	Maintenance    *notify.MaintenancePayload
 }
@@ -45,6 +46,8 @@ func Render(in RenderInput) (Content, error) {
 		return renderMaintenance(t, in), nil
 	case domain.EventSubscriberConfirm:
 		return renderConfirm(t, in), nil
+	case domain.EventAccessLink:
+		return renderAccessLink(t, in), nil
 	default:
 		return Content{}, fmt.Errorf("email: неизвестный тип события %q", in.Event)
 	}
@@ -89,6 +92,17 @@ func renderConfirm(t translations, in RenderInput) Content {
 	var h strings.Builder
 	h.WriteString("<p>" + html.EscapeString(t.confirmIntro(in.PageName)) + "</p>")
 	h.WriteString(`<p><a href="` + html.EscapeString(in.ConfirmURL) + `">` + html.EscapeString(t.confirmCTA) + "</a></p>")
+	return Content{Subject: subject, TextBody: text, HTMLBody: htmlDoc(h.String())}
+}
+
+func renderAccessLink(t translations, in RenderInput) Content {
+	subject := fmt.Sprintf("[%s] %s", in.PageName, t.accessSubject)
+	lines := []string{t.accessIntro(in.PageName), "", t.accessCTA + ": " + in.AccessURL}
+
+	text := strings.Join(lines, "\n")
+	var h strings.Builder
+	h.WriteString("<p>" + html.EscapeString(t.accessIntro(in.PageName)) + "</p>")
+	h.WriteString(`<p><a href="` + html.EscapeString(in.AccessURL) + `">` + html.EscapeString(t.accessCTA) + "</a></p>")
 	return Content{Subject: subject, TextBody: text, HTMLBody: htmlDoc(h.String())}
 }
 
@@ -140,6 +154,9 @@ type translations struct {
 	confirmSubject string
 	confirmCTA     string
 	confirmIntro   func(page string) string
+	accessSubject  string
+	accessCTA      string
+	accessIntro    func(page string) string
 }
 
 func dict(locale string) translations {
@@ -165,6 +182,10 @@ func dict(locale string) translations {
 			confirmIntro: func(page string) string {
 				return "Please confirm your subscription to status updates for " + page + "."
 			},
+			accessSubject: "Access link", accessCTA: "Open status page",
+			accessIntro: func(page string) string {
+				return "Use the link below to access the private status page “" + page + "”. The link expires in 1 hour."
+			},
 		}
 	}
 	return translations{
@@ -187,6 +208,10 @@ func dict(locale string) translations {
 		confirmSubject: "Подтвердите подписку", confirmCTA: "Подтвердить подписку",
 		confirmIntro: func(page string) string {
 			return "Подтвердите подписку на обновления статуса «" + page + "»."
+		},
+		accessSubject: "Ссылка для доступа", accessCTA: "Открыть страницу статуса",
+		accessIntro: func(page string) string {
+			return "Перейдите по ссылке ниже для доступа к приватной странице статуса «" + page + "». Ссылка действует 1 час."
 		},
 	}
 }

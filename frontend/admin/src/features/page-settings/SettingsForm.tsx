@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 
-import { updatePage, verifyDomain } from "@/entities/page";
-import type { DomainStatus, StatusPage } from "@/entities/page";
+import {
+  addAllowedEmail,
+  deleteAllowedEmail,
+  listAllowedEmails,
+  updatePage,
+  verifyDomain,
+} from "@/entities/page";
+import type { AllowedEmail, DomainStatus, StatusPage } from "@/entities/page";
 import { HttpError } from "@/shared/api";
 import { Button, Field, Input, Select } from "@/shared/ui";
 
@@ -54,6 +60,8 @@ export function SettingsForm({
   );
   const [password, setPassword] = useState("");
   const [clearPassword, setClearPassword] = useState(false);
+  const [allowedEmails, setAllowedEmails] = useState<AllowedEmail[]>([]);
+  const [newEmail, setNewEmail] = useState("");
   const [timezone, setTimezone] = useState(page.timezone ?? "UTC");
   const [locale, setLocale] = useState(page.default_locale ?? "ru");
   const [color, setColor] = useState(initial.color);
@@ -61,7 +69,25 @@ export function SettingsForm({
   const [timeFormat, setTimeFormat] = useState<TimeFormat>(initial.timeFormat);
   const [logoUrl, setLogoUrl] = useState(page.logo_url ?? "");
   const [faviconUrl, setFaviconUrl] = useState(page.favicon_url ?? "");
+  const [hidePoweredBy, setHidePoweredBy] = useState(page.hide_powered_by ?? false);
   const [customDomain, setCustomDomain] = useState(page.custom_domain ?? "");
+  // Письма (этап 4.5): from_email читается из ответа; smtp_config (с паролем) — нет, поэтому
+  // отправляем его только если оператор тронул секцию SMTP (иначе не перетираем сохранённый).
+  const [fromEmail, setFromEmail] = useState(page.from_email ?? "");
+  const [useSMTP, setUseSMTP] = useState(page.smtp_configured ?? false);
+  const [smtpTouched, setSmtpTouched] = useState(false);
+  const [smtp, setSMTP] = useState({
+    host: "",
+    port: "587",
+    username: "",
+    password: "",
+    from: "",
+    tls: false,
+  });
+  const touchSMTP = (patch: Partial<typeof smtp>) => {
+    setSmtpTouched(true);
+    setSMTP((s) => ({ ...s, ...patch }));
+  };
   const [domainStatus, setDomainStatus] = useState<DomainStatus | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -76,6 +102,38 @@ export function SettingsForm({
         .catch(() => setDomainStatus(null));
     }
   }, [page.id, page.custom_domain]);
+
+  // Список email доступа (этап 4.2.1) — грузим для приватной страницы.
+  useEffect(() => {
+    if (page.visibility === "private") {
+      listAllowedEmails(page.id)
+        .then(setAllowedEmails)
+        .catch(() => setAllowedEmails([]));
+    }
+  }, [page.id, page.visibility]);
+
+  async function addEmail() {
+    const email = newEmail.trim();
+    if (!email) return;
+    setError(null);
+    try {
+      const created = await addAllowedEmail(page.id, email);
+      setAllowedEmails((prev) => [...prev, created]);
+      setNewEmail("");
+    } catch (err) {
+      setError(err instanceof HttpError ? err.message : "Не удалось добавить email");
+    }
+  }
+
+  async function removeEmail(id: string) {
+    setError(null);
+    try {
+      await deleteAllowedEmail(id);
+      setAllowedEmails((prev) => prev.filter((e) => e.id !== id));
+    } catch (err) {
+      setError(err instanceof HttpError ? err.message : "Не удалось удалить email");
+    }
+  }
 
   async function checkDomain() {
     setVerifying(true);
@@ -106,7 +164,9 @@ export function SettingsForm({
         theme: { primary_color: color, mode, time_format: timeFormat },
         logo_url: logoUrl.trim() || null,
         favicon_url: faviconUrl.trim() || null,
+        hide_powered_by: hidePoweredBy,
         custom_domain: customDomain.trim() || null,
+        from_email: fromEmail.trim() || null,
       };
       // Пароль: задаём только при непустом вводе; снимаем при отметке «снять» (null).
       // Пустой ввод без отметки — не трогаем (текущий пароль нельзя прочитать).
@@ -114,6 +174,19 @@ export function SettingsForm({
         body.password = null;
       } else if (password.trim()) {
         body.password = password;
+      }
+      // SMTP: отправляем только если оператор тронул секцию (нельзя перечитать пароль).
+      if (smtpTouched) {
+        body.smtp_config = useSMTP
+          ? {
+              host: smtp.host.trim(),
+              port: Number(smtp.port) || 587,
+              username: smtp.username.trim(),
+              password: smtp.password,
+              from: smtp.from.trim(),
+              tls: smtp.tls,
+            }
+          : null;
       }
       const updated = await updatePage(page.id, body);
       onSaved(updated);
@@ -175,6 +248,36 @@ export function SettingsForm({
             Без заданного пароля приватная страница недоступна посетителям. Текущий пароль
             показать нельзя — введите новый, чтобы сменить.
           </div>
+
+          <Field label="Доступ по списку email (magic-link)">
+            <div className="hp-inline-form">
+              <Input
+                type="email"
+                placeholder="guest@example.com"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+              />
+              <Button type="button" onClick={addEmail} disabled={!newEmail.trim()}>
+                Добавить
+              </Button>
+            </div>
+          </Field>
+          {allowedEmails.length > 0 ? (
+            <div style={{ marginBottom: 8 }}>
+              {allowedEmails.map((e) => (
+                <div key={e.id} className="hp-list-item">
+                  <span>{e.email}</span>
+                  <Button type="button" onClick={() => removeEmail(e.id)}>
+                    Удалить
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="hp-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+              Список пуст. Добавьте адреса — они смогут получить ссылку доступа на почту.
+            </div>
+          )}
         </>
       ) : null}
 
@@ -241,6 +344,82 @@ export function SettingsForm({
           onChange={(e) => setFaviconUrl(e.target.value)}
         />
       </Field>
+      <label className="hp-checkbox" style={{ display: "block", marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={hidePoweredBy}
+          onChange={(e) => setHidePoweredBy(e.target.checked)}
+        />{" "}
+        Скрыть «Работает на HealthPage» (white-label)
+      </label>
+
+      <h3 style={{ margin: "16px 0 8px" }}>Письма</h3>
+      <Field label="Адрес отправителя (From)">
+        <Input
+          type="email"
+          placeholder="status@вашдомен.ru"
+          value={fromEmail}
+          onChange={(e) => setFromEmail(e.target.value)}
+        />
+      </Field>
+      <label className="hp-checkbox" style={{ display: "block", marginBottom: 8 }}>
+        <input
+          type="checkbox"
+          checked={useSMTP}
+          onChange={(e) => {
+            setSmtpTouched(true);
+            setUseSMTP(e.target.checked);
+          }}
+        />{" "}
+        Использовать собственный SMTP{page.smtp_configured ? " (настроен)" : ""}
+      </label>
+      {useSMTP ? (
+        <>
+          <div className="hp-inline-form">
+            <Field label="Хост">
+              <Input value={smtp.host} onChange={(e) => touchSMTP({ host: e.target.value })} />
+            </Field>
+            <Field label="Порт">
+              <Input
+                type="number"
+                value={smtp.port}
+                onChange={(e) => touchSMTP({ port: e.target.value })}
+              />
+            </Field>
+          </div>
+          <div className="hp-inline-form">
+            <Field label="Пользователь">
+              <Input
+                value={smtp.username}
+                onChange={(e) => touchSMTP({ username: e.target.value })}
+              />
+            </Field>
+            <Field label="Пароль">
+              <Input
+                type="password"
+                autoComplete="new-password"
+                placeholder={page.smtp_configured ? "Введите заново для изменения" : ""}
+                value={smtp.password}
+                onChange={(e) => touchSMTP({ password: e.target.value })}
+              />
+            </Field>
+          </div>
+          <Field label="From внутри SMTP (необязательно)">
+            <Input value={smtp.from} onChange={(e) => touchSMTP({ from: e.target.value })} />
+          </Field>
+          <label className="hp-checkbox" style={{ display: "block", marginBottom: 8 }}>
+            <input
+              type="checkbox"
+              checked={smtp.tls}
+              onChange={(e) => touchSMTP({ tls: e.target.checked })}
+            />{" "}
+            Неявный TLS (порт 465); иначе STARTTLS
+          </label>
+          <div className="hp-muted" style={{ fontSize: 13, marginBottom: 8 }}>
+            Пароль SMTP не отображается в целях безопасности — при изменении введите заново.
+          </div>
+        </>
+      ) : null}
 
       <h3 style={{ margin: "16px 0 8px" }}>Собственный домен</h3>
       <Field label="Домен">
@@ -273,6 +452,26 @@ export function SettingsForm({
           </Button>
         </div>
       ) : null}
+
+      <h3 style={{ margin: "16px 0 8px" }}>Виджет статуса</h3>
+      <div style={{ marginBottom: 8 }}>
+        <img
+          src={`/api/v1/pages/${encodeURIComponent(page.slug)}/badge.svg`}
+          alt="Превью бейджа статуса"
+          style={{ verticalAlign: "middle" }}
+        />
+      </div>
+      <div className="hp-muted" style={{ fontSize: 13, marginBottom: 4 }}>
+        Встройте бейдж на свой сайт (замените хост на ваш публичный домен):
+      </div>
+      <textarea
+        className="hp-input"
+        readOnly
+        rows={2}
+        style={{ fontFamily: "monospace", fontSize: 12 }}
+        value={`<a href="https://<ваш-домен>/status/${page.slug}"><img src="https://<ваш-домен>/api/v1/pages/${page.slug}/badge.svg" alt="${page.name} status" /></a>`}
+        onFocus={(e) => e.currentTarget.select()}
+      />
 
       {error && <div className="hp-error">{error}</div>}
       {saved && <div className="hp-muted">Сохранено</div>}

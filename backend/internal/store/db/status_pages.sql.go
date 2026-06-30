@@ -226,6 +226,22 @@ func (q *Queries) SetStatusPagePassword(ctx context.Context, arg SetStatusPagePa
 	return err
 }
 
+const setStatusPageSMTP = `-- name: SetStatusPageSMTP :exec
+UPDATE status_pages SET smtp_config = $2, from_email = $3 WHERE id = $1 AND deleted_at IS NULL
+`
+
+type SetStatusPageSMTPParams struct {
+	ID         uuid.UUID
+	SmtpConfig []byte
+	FromEmail  *string
+}
+
+// Задаёт/снимает кастомный SMTP и адрес отправителя страницы (этап 4.5). NULL — снять.
+func (q *Queries) SetStatusPageSMTP(ctx context.Context, arg SetStatusPageSMTPParams) error {
+	_, err := q.db.Exec(ctx, setStatusPageSMTP, arg.ID, arg.SmtpConfig, arg.FromEmail)
+	return err
+}
+
 const softDeleteStatusPage = `-- name: SoftDeleteStatusPage :exec
 UPDATE status_pages SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
 `

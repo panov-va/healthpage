@@ -47,6 +47,18 @@ type Config struct {
 	// Целевой хост для CNAME собственных доменов (этап 4.3): оператор направляет CNAME своего
 	// домена сюда, верификация сверяет резолв с этим значением.
 	CNAMETarget string
+
+	// ACME (этап 4.3.2): автоматический выпуск TLS для кастомных доменов.
+	ACMEEmail         string        // контактный email для Let's Encrypt
+	ACMEDirectoryURL  string        // ACME-директория (prod/staging)
+	ACMERenewInterval time.Duration // период запуска проверки продления
+	ACMERenewBefore   time.Duration // продлевать, если до истечения меньше этого срока
+
+	// Edge-прокси кастомных доменов (этап 4.3.3).
+	EdgeHTTPAddr  string // адрес :80 (HTTP-01 + redirect)
+	EdgeHTTPSAddr string // адрес :443 (TLS-терминация)
+	EdgeAPIURL    string // origin API для /api/*
+	EdgeSSRURL    string // origin public-ssr для страниц
 }
 
 // IsProd сообщает, работаем ли в prod-режиме (влияет, напр., на флаг Secure у cookie).
@@ -80,6 +92,16 @@ func Load() Config {
 		SlackClientSecret: env("SLACK_CLIENT_SECRET", ""),
 
 		CNAMETarget: env("CNAME_TARGET", "cname.healthpage.ru"),
+
+		ACMEEmail:         env("ACME_EMAIL", ""),
+		ACMEDirectoryURL:  env("ACME_DIRECTORY_URL", "https://acme-v02.api.letsencrypt.org/directory"),
+		ACMERenewInterval: envDuration("ACME_RENEW_INTERVAL", 12*time.Hour),
+		ACMERenewBefore:   envDuration("ACME_RENEW_BEFORE", 30*24*time.Hour),
+
+		EdgeHTTPAddr:  env("EDGE_HTTP_ADDR", ":80"),
+		EdgeHTTPSAddr: env("EDGE_HTTPS_ADDR", ":443"),
+		EdgeAPIURL:    env("EDGE_API_URL", "http://api:8080"),
+		EdgeSSRURL:    env("EDGE_SSR_URL", "http://public-ssr:3000"),
 	}
 	// Дефолт секрета отписки — операторский JWT-секрет (для dev/одно-процессного запуска).
 	if c.SubscriptionSecret == "" {

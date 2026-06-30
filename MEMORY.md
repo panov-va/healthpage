@@ -14,18 +14,19 @@
 переключить вручную в Settings→Branches, затем удалить main (`git push origin --delete main`).
 **Фаза:** Этапы 0–2 закоммичены человеком; Этап 1 закрыт по коду. **Этап 3 (Подписки и уведомления)
 ЗАКРЫТ ПО КОДУ** (3.1–3.7, 3.9, 3.10 готовы, ждут коммита). **3.8 (MAX) ОТЛОЖЕН** (после Этапа 7).
-**Этап 4 (Кастомизация) — В РАБОТЕ: 4.1, 4.2 ГОТОВЫ; 4.3 разбит на подзадачи, 4.3.1 ГОТОВ ПО КОДУ.**
-(4.1 тема/тёмный режим/логотип/favicon/таймзона; 4.2 приватные страницы по паролю + noindex;
-4.3.1 управление доменом + CNAME-верификация. Все ждут коммита — детали ниже в «Что в работе».)
-**Решения человека по 4.3:** TLS — **собственный ACME-сервис на Go** (lego), верификация — **CNAME**.
-**Следующий шаг:** 4.3.2 — `cmd/tls-manager` (lego: выпуск/хранение/продление сертов для
-verified-доменов), затем 4.3.3 — edge-прокси (TLS по SNI + HTTP-01 + роутинг по Host). 4.2.1
-(приватность по списку email + magic-link) — отложена.
+**Этап 4 (Кастомизация и white-label) — ЗАКРЫТ ПО КОДУ** (4.1–4.6 + 4.2.1, все ждут коммита; детали
+ниже в «Что в работе»). 4.1 тема/тёмный режим/логотип/favicon/таймзона; 4.2 приватные по паролю +
+noindex; 4.2.1 приватные по списку email + magic-link; 4.3.1 управление доменом + CNAME; 4.3.2
+ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 4.4 white-label; 4.5 custom SMTP;
+4.6 виджет-бейдж. **Следующий шаг:** Этап 5 — API и интеграции (ApiToken, write-API, входящие/исходящие
+webhook'и).
+**[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** реальный выпуск TLS (4.3.2) и HTTPS-доступ по
+домену (4.3.3) **локально не проверены** — нужен прод-деплой (публичный DNS, открытые :80/:443,
+выпуск Let's Encrypt). edge/tls-manager в compose под профилем `edge` (не стартуют в dev).
 Организационно осталось: для 3.7 — `TELEGRAM_BOT_TOKEN` у @BotFather; для 3.9 — Slack App +
-`SLACK_CLIENT_ID/SECRET`, redirect_uri `<BASE_URL>/api/v1/subscribe/slack/callback`; для 4.3 —
-публичный хост edge-прокси (`CNAME_TARGET`, дефолт cname.healthpage.ru).
-**Прод:** `SUBSCRIPTION_SECRET` api ↔ воркеры должны совпадать (им же подписываются токены
-доступа к приватным страницам 4.2).
+`SLACK_CLIENT_ID/SECRET`; для 4.3 — публичный хост edge (`CNAME_TARGET`), `ACME_EMAIL`.
+**Прод:** `SUBSCRIPTION_SECRET` api ↔ воркеры должны совпадать (им же подписываются токены доступа к
+приватным страницам 4.2 и magic-link 4.2.1).
 
 ✅ **Закрыт флаг 2.9 (контракт расширен с санкции человека):** добавлены админские read-эндпоинты
 `GET /incidents` (со status_page_id + фильтры + пагинация, **включая скрытые**), `GET /incidents/{id}`
@@ -100,6 +101,35 @@ verified-доменов), затем 4.3.3 — edge-прокси (TLS по SNI +
 ---
 
 ## Что в работе
+
+**Этап 4 добивка: 4.4/4.5/4.6/4.2.1/4.3.2/4.3.3 (написано, build+test+lint зелёные, ждёт коммита):**
+- **4.4 white-label:** тумблер `hide_powered_by` в `SettingsForm` (поле уже было в StatusPageUpdate;
+  публичный футер уже учитывал). Премиум-гейтинг — этап 6.
+- **4.5 custom SMTP:** контракт — `StatusPageUpdate.smtp_config` (write-only объект/null) + `from_email`;
+  ответ `StatusPage` +`from_email`+`smtp_configured` (булев, без секрета). store `SetStatusPageSMTP`;
+  PATCH merge (smtp из админки шлётся только если тронут — нельзя перечитать пароль). Admin — секция
+  «Письма». Доставка (`effectiveSMTP`) уже была в worker-email. management-тест расширен.
+- **4.6 виджет:** контракт `GET /pages/{slug}/badge.svg` (public, гейтится приватной). Пакет
+  `internal/widget` (SVG shields-стиль, цвет/i18n по статусу), хендлер (ComputeOverallStatus,
+  Cache-Control 60s). Admin — превью `<img>` + копируемый embed-сниппет. Юнит+смоук.
+- **4.2.1 приватность по email + magic-link:** миграция `00009_page_allowed_emails`. Контракт — CRUD
+  allowed-emails (admin) + публичные `access/request-link` (всегда 202) и `access/verify?token`.
+  `subscription.AccessLinkToken/Parse` (HMAC page+email, TTL 1ч). Транзакционное письмо: `EventAccessLink`,
+  `notify.Engine.SendAccessLink` (NotificationID пустой → без журнала), worker-email обрабатывает
+  транзакционную ветку + рендер RU/EN. API: `handleRequestAccessLink` (сверка email, анти-энумерация),
+  `handleVerifyAccessLink` (повторная сверка → access-токен 4.2). public-ssr: гейт + email-форма +
+  route handlers `access/request-link` и `access/verify` (ставит cookie). Admin: список email в настройках.
+  Интеграционный (capturePublisher) + render-тест. **Флаг:** гейт показывает оба метода (пароль+email).
+- **4.3.2 ACME (`cmd/tls-manager`, lego v4):** миграция `00010_domain_certificates`
+  (domain_certificates/acme_accounts/acme_challenges). `internal/acme`: аккаунт в БД, HTTP-01 через
+  `dbChallengeProvider` (challenge в БД → отдаёт edge), `Obtain`, `RenewDue` (verified-домены, <renew_before).
+  config ACME_*. Юнит: needsIssue/challenge-provider/certExpiry/key-roundtrip. **Реальный выпуск — на проде.**
+- **4.3.3 edge (`cmd/edge`):** `internal/edge` — TLS по SNI (серты из БД, кэш с проверкой срока),
+  :80 HTTP-01+redirect, :443 `/api/*`→API / корень кастом-домена→`/status/{slug}` (store.SlugByCustomDomain)
+  / прочее→public-ssr. config EDGE_*. Dockerfile (+2 бинаря), compose (профиль `edge`, порты 80/443).
+  Юнит: isAPIPath/HTTP-01/redirect/hostOnly. **Отладка — на проде.**
+- **Зависимость:** добавлен `github.com/go-acme/lego/v4` v4.17.4. Миграции up/down обратимы (до v10).
+  Все backend-тесты (вкл. интеграционные PG16) + vet + golangci-lint + admin/next build зелёные.
 
 **Этап 4.3.1 — собственный домен: управление + верификация CNAME (написано, build+test+смоук PASS, ждёт коммита):**
 - **Решения человека (4.3):** TLS — собственный ACME-сервис на Go (lego, задача 4.3.2); верификация — CNAME.

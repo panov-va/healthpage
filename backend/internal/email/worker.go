@@ -64,6 +64,11 @@ func (w *Worker) Process(ctx context.Context, body []byte) Disposition {
 		w.log.Error("email: malformed message", "err", err)
 		return Reject
 	}
+	// Транзакционные письма (magic-link 4.2.1) идут без журнала: NotificationID пустой —
+	// нет идемпотентности/MarkSent, отправляем напрямую (при сбое дропаем, клиент перезапросит).
+	if msg.NotificationID == "" {
+		return w.processTransactional(ctx, msg)
+	}
 	nid, err := uuid.Parse(msg.NotificationID)
 	if err != nil {
 		w.log.Error("email: bad notification_id", "id", msg.NotificationID, "err", err)
@@ -108,6 +113,24 @@ func (w *Worker) Process(ctx context.Context, body []byte) Disposition {
 	return Ack
 }
 
+// processTransactional шлёт письмо без журнала (magic-link 4.2.1): build → send.
+// При ошибке сборки/отправки — Reject (в DLQ; клиент перезапросит ссылку), без ретрай-цикла.
+func (w *Worker) processTransactional(ctx context.Context, msg notify.Message) Disposition {
+	content, cfg, err := w.build(ctx, msg)
+	if err != nil {
+		w.log.Error("email: build transactional", "event", msg.Event, "err", err)
+		return Reject
+	}
+	if err := w.sender.Send(ctx, cfg, Email{
+		To: msg.Address, Subject: content.Subject, TextBody: content.TextBody, HTMLBody: content.HTMLBody,
+	}); err != nil {
+		w.log.Warn("email: transactional send failed, dropping", "event", msg.Event, "err", err)
+		return Reject
+	}
+	w.log.Info("email: transactional sent", "to", msg.Address, "event", msg.Event)
+	return Ack
+}
+
 // handleSendFailure планирует ретрай через delayed exchange либо отправляет в DLQ при исчерпании.
 func (w *Worker) handleSendFailure(ctx context.Context, msg notify.Message) Disposition {
 	scheduled, err := w.retrier.Retry(ctx, msg)
@@ -147,6 +170,13 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, 
 			return Content{}, SMTP{}, fmt.Errorf("email: confirm payload: %w", err)
 		}
 		in.ConfirmURL = w.baseURL + "/api/v1/subscribe/confirm?token=" + url.QueryEscape(p.ConfirmToken)
+	case domain.EventAccessLink:
+		var p notify.AccessLinkPayload
+		if err := json.Unmarshal(msg.Payload, &p); err != nil {
+			return Content{}, SMTP{}, fmt.Errorf("email: access link payload: %w", err)
+		}
+		// Ссылка ведёт на public-ssr, который обменяет токен на cookie доступа (как пароль 4.2).
+		in.AccessURL = w.baseURL + "/status/" + page.Slug + "/access/verify?token=" + url.QueryEscape(p.Token)
 	case domain.EventIncidentNew, domain.EventIncidentUpdate:
 		var p notify.IncidentPayload
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {

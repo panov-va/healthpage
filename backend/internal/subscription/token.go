@@ -146,6 +146,46 @@ func ParseSlackState(secret, state string, now time.Time) (uuid.UUID, error) {
 	return id, nil
 }
 
+// AccessLinkTTL — срок годности magic-link токена доступа к приватной странице по email (4.2.1).
+const AccessLinkTTL = time.Hour
+
+// AccessLinkToken возвращает токен magic-link: "<pageID>.<base64url(email)>.<expUnix>.<HMAC>".
+// Несёт страницу и email (для повторной сверки со списком доступа при обмене на токен доступа).
+func AccessLinkToken(secret string, pageID uuid.UUID, email string, expiresAt int64) string {
+	enc := base64.RawURLEncoding.EncodeToString([]byte(email))
+	msg := pageID.String() + "." + enc + "." + strconv.FormatInt(expiresAt, 10)
+	return msg + "." + sign(secret, msg)
+}
+
+// ParseAccessLinkToken проверяет подпись и срок и возвращает page_id и email.
+func ParseAccessLinkToken(secret, token string, now time.Time) (uuid.UUID, string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 4 {
+		return uuid.Nil, "", fmt.Errorf("subscription: malformed access link token")
+	}
+	idStr, enc, expStr, sig := parts[0], parts[1], parts[2], parts[3]
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return uuid.Nil, "", fmt.Errorf("subscription: bad page id in access link: %w", err)
+	}
+	msg := idStr + "." + enc + "." + expStr
+	if !hmac.Equal([]byte(sig), []byte(sign(secret, msg))) {
+		return uuid.Nil, "", fmt.Errorf("subscription: invalid access link signature")
+	}
+	exp, err := strconv.ParseInt(expStr, 10, 64)
+	if err != nil {
+		return uuid.Nil, "", fmt.Errorf("subscription: bad expiry in access link: %w", err)
+	}
+	if now.After(time.Unix(exp, 0)) {
+		return uuid.Nil, "", fmt.Errorf("subscription: access link expired")
+	}
+	emailBytes, err := base64.RawURLEncoding.DecodeString(enc)
+	if err != nil {
+		return uuid.Nil, "", fmt.Errorf("subscription: bad email in access link: %w", err)
+	}
+	return id, string(emailBytes), nil
+}
+
 func sign(secret, msg string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(msg))

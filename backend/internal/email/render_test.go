@@ -75,6 +75,24 @@ func TestRenderConfirm(t *testing.T) {
 	}
 }
 
+func TestRenderAccessLink(t *testing.T) {
+	c, err := Render(RenderInput{
+		Event:     domain.EventAccessLink,
+		Locale:    "en",
+		PageName:  "Acme",
+		AccessURL: "https://h/status/acme/access/verify?token=xyz",
+	})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !strings.Contains(c.Subject, "Access link") {
+		t.Errorf("subject: %q", c.Subject)
+	}
+	if !strings.Contains(c.HTMLBody, "access/verify?token=xyz") {
+		t.Errorf("html не содержит magic-link: %s", c.HTMLBody)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
 	if _, err := Render(RenderInput{Event: domain.EventIncidentNew}); err == nil {
 		t.Error("ожидалась ошибка при nil incident payload")

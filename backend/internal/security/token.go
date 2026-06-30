@@ -90,3 +90,25 @@ func HashRefreshToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
+
+// apiTokenPrefix — узнаваемый префикс API-токена страницы (этап 5.1). Облегчает распознавание
+// токена в логах/секрет-сканерах и отделяет page-токен от операторского Bearer-JWT.
+const apiTokenPrefix = "hp_"
+
+// GenerateAPIToken возвращает непрозрачный API-токен страницы (отдаётся клиенту единожды) и его
+// SHA-256 хэш в hex (хранится в БД). Сам токен в БД не хранится (DESIGN §9).
+func GenerateAPIToken() (token, hash string, err error) {
+	raw := make([]byte, 32)
+	if _, err = rand.Read(raw); err != nil {
+		return "", "", fmt.Errorf("security: read api token: %w", err)
+	}
+	token = apiTokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
+	hash = HashAPIToken(token)
+	return token, hash, nil
+}
+
+// HashAPIToken возвращает hex SHA-256 от API-токена (для поиска/сравнения в БД).
+func HashAPIToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}

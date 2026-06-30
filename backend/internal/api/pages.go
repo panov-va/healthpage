@@ -83,7 +83,10 @@ type patchPageRequest struct {
 }
 
 func (s *server) handleListPages(w http.ResponseWriter, r *http.Request) {
-	user, _ := userFromContext(r.Context())
+	user, ok := requireOperator(w, r)
+	if !ok {
+		return
+	}
 	acc, err := s.store.AccountByOwner(r.Context(), user.ID)
 	if err != nil {
 		writeServerError(w, err)
@@ -119,7 +122,10 @@ func (s *server) handleCreatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := userFromContext(r.Context())
+	user, ok := requireOperator(w, r)
+	if !ok {
+		return
+	}
 	acc, err := s.store.AccountByOwner(r.Context(), user.ID)
 	if err != nil {
 		writeServerError(w, err)

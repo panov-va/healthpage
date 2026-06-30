@@ -166,6 +166,12 @@ const (
 	SubscriptionStatusPending  SubscriptionStatus = "pending"
 )
 
+// Defines values for TokenScope.
+const (
+	Read  TokenScope = "read"
+	Write TokenScope = "write"
+)
+
 // Defines values for GetPagesSlugBadgeSvgParamsLang.
 const (
 	En GetPagesSlugBadgeSvgParamsLang = "en"
@@ -727,21 +733,36 @@ type Subscription struct {
 // SubscriptionStatus defines model for SubscriptionStatus.
 type SubscriptionStatus string
 
+// Token defines model for Token.
+type Token struct {
+	CreatedAt    time.Time          `json:"created_at"`
+	Id           openapi_types.UUID `json:"id"`
+	LastUsedAt   *time.Time         `json:"last_used_at"`
+	Name         string             `json:"name"`
+	Scopes       []TokenScope       `json:"scopes"`
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
+}
+
 // TokenCreate defines model for TokenCreate.
 type TokenCreate struct {
-	Name   string    `json:"name"`
-	Scopes *[]string `json:"scopes,omitempty"`
+	Name         string             `json:"name"`
+	Scopes       *[]TokenScope      `json:"scopes,omitempty"`
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
 }
 
 // TokenCreated defines model for TokenCreated.
 type TokenCreated struct {
-	Id     openapi_types.UUID `json:"id"`
-	Name   string             `json:"name"`
-	Scopes *[]string          `json:"scopes,omitempty"`
+	Id           openapi_types.UUID `json:"id"`
+	Name         string             `json:"name"`
+	Scopes       []TokenScope       `json:"scopes"`
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
 
 	// Token Показывается единожды
 	Token string `json:"token"`
 }
+
+// TokenScope defines model for TokenScope.
+type TokenScope string
 
 // UptimeReport defines model for UptimeReport.
 type UptimeReport struct {
@@ -937,6 +958,12 @@ type GetSubscribersParams struct {
 	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
 	Page         *Page               `form:"page,omitempty" json:"page,omitempty"`
 	PerPage      *PerPage            `form:"per_page,omitempty" json:"per_page,omitempty"`
+}
+
+// GetTokensParams defines parameters for GetTokens.
+type GetTokensParams struct {
+	// StatusPageId Страница, чьи токены вернуть.
+	StatusPageId openapi_types.UUID `form:"status_page_id" json:"status_page_id"`
 }
 
 // GetUnsubscribeParams defines parameters for GetUnsubscribe.

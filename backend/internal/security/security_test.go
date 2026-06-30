@@ -82,3 +82,23 @@ func TestRefreshTokenHashing(t *testing.T) {
 		t.Fatal("hash not reproducible")
 	}
 }
+
+func TestAPITokenHashing(t *testing.T) {
+	tok, hash, err := GenerateAPIToken()
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if tok == hash {
+		t.Fatal("raw token must differ from stored hash")
+	}
+	if len(tok) < 4 || tok[:3] != "hp_" {
+		t.Fatalf("api token must carry hp_ prefix, got %q", tok)
+	}
+	if HashAPIToken(tok) != hash {
+		t.Fatal("hash not reproducible")
+	}
+	tok2, _, _ := GenerateAPIToken()
+	if tok2 == tok {
+		t.Fatal("tokens must be unique")
+	}
+}

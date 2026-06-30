@@ -424,7 +424,23 @@ white-label убирает брендинг; виджет встраиваетс
 
 Зависит от: 2. DESIGN §4, §7.2, §7.3.
 
-- [ ] **5.1** `ApiToken` со scope'ами; аутентификация управляющих запросов (`Authorization`).
+- [x] **5.1** `ApiToken` со scope'ами; аутентификация управляющих запросов (`Authorization`).
+      — ✅ **Контракт расширен с санкции человека:** в `TokenCreate` добавлен required `status_page_id`
+      (токен page-scoped, как модель §5); `TokenCreated` +`status_page_id`+`scopes` (required); новая
+      схема `Token` (метаданные без значения) + `TokenScope` enum `[read, write]`; добавлен `GET /tokens`
+      (query status_page_id → список). Типы перегенерированы (TS+Go). Миграция `00011_api_tokens.sql`
+      (БД→11): `api_tokens` (token_hash unique, scopes text[], last_used_at; FK CASCADE). Домен
+      `apitoken.go` (TokenScope read/write, `HasScope` — write⊇read, `NormalizeScopes`). security
+      `GenerateAPIToken`/`HashAPIToken` (префикс `hp_`, SHA-256, в БД только хэш §9). store
+      `api_tokens.go`. **Middleware:** `requireAuth` теперь принимает ЛИБО операторский JWT
+      (`Authorization: Bearer`), ЛИБО page-токен (`Authorization: <token>` без Bearer) → principal в
+      контексте; scope-энфорсинг по HTTP-методу (мутации→write, GET→read; write⊇read; нехватка→403);
+      `authorizePage` работает для обоих субъектов (токен — только своя страница). API `tokens.go`:
+      POST/GET/DELETE `/tokens` — **только оператор** (page-токен не управляет токенами→403; пустой
+      scopes→полный доступ read+write). Юнит (домен scopes, security gen/hash) + интеграционный на PG16
+      (создание/список/отзыв; аутентификация токеном; scope 403/200; привязка к странице→404; токен не
+      создаёт токен→403; невалидный/отозванный→401; изоляция операторов; last_used_at). build/test/vet/
+      gofmt/golangci-lint + admin build зелёные; миграция up/down/up обратима. Ждёт коммита.
 - [ ] **5.2** Полный write-API (компоненты/инциденты/работы/подписчики/токены) по openapi.yaml §7.2.
 - [ ] **5.3** Входящие webhook'и: Grafana, Prometheus, PagerDuty, generic; маппинг на компоненты;
       HMAC-подпись; идемпотентность по dedup-ключу. (Форматы payload — позже, см. DESIGN.)

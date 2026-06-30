@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -21,10 +22,11 @@ func pathUUID(w http.ResponseWriter, r *http.Request, key string) (uuid.UUID, bo
 	return id, true
 }
 
-// authorizePage загружает страницу и проверяет, что текущий оператор владеет её аккаунтом.
+// authorizePage загружает страницу и проверяет, что текущий субъект имеет к ней доступ:
+// оператор — владеет её аккаунтом; page-токен — привязан именно к этой странице.
 // Чтобы не раскрывать существование чужих страниц, при отсутствии доступа возвращается 404.
 func (s *server) authorizePage(w http.ResponseWriter, r *http.Request, pageID uuid.UUID) (domain.StatusPage, bool) {
-	user, ok := userFromContext(r.Context())
+	p, ok := principalFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "не аутентифицирован")
 		return domain.StatusPage{}, false
@@ -38,12 +40,23 @@ func (s *server) authorizePage(w http.ResponseWriter, r *http.Request, pageID uu
 		}
 		return domain.StatusPage{}, false
 	}
-	acc, err := s.store.AccountByOwner(r.Context(), user.ID)
-	if err != nil || page.AccountID != acc.ID {
+	if !s.principalOwnsPage(r.Context(), p, page) {
 		writeError(w, http.StatusNotFound, "not_found", "страница не найдена")
 		return domain.StatusPage{}, false
 	}
 	return page, true
+}
+
+// principalOwnsPage сообщает, имеет ли субъект доступ к странице.
+func (s *server) principalOwnsPage(ctx context.Context, p principal, page domain.StatusPage) bool {
+	if p.isToken() {
+		return p.token.StatusPageID == page.ID
+	}
+	if p.operator == nil {
+		return false
+	}
+	acc, err := s.store.AccountByOwner(ctx, p.operator.ID)
+	return err == nil && page.AccountID == acc.ID
 }
 
 // writeServerError логирует и отдаёт 500 в формате контракта.

@@ -18,8 +18,10 @@
 ниже в «Что в работе»). 4.1 тема/тёмный режим/логотип/favicon/таймзона; 4.2 приватные по паролю +
 noindex; 4.2.1 приватные по списку email + magic-link; 4.3.1 управление доменом + CNAME; 4.3.2
 ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 4.4 white-label; 4.5 custom SMTP;
-4.6 виджет-бейдж. **Следующий шаг:** Этап 5 — API и интеграции (ApiToken, write-API, входящие/исходящие
-webhook'и).
+4.6 виджет-бейдж. **Этап 5 (API и интеграции) НАЧАТ: 5.1 ГОТОВ ПО КОДУ** (ApiToken со scope'ами +
+аутентификация управляющих запросов; ждёт коммита; детали в «Что в работе»). **Следующий шаг:** 5.2 —
+полный write-API под page-токеном (status_page_id опционален при ApiToken — берётся из токена), затем
+5.3 входящие webhook'и (Grafana/Prometheus/PagerDuty/generic + WebhookIntegration + HMAC), 5.4 исходящие.
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** реальный выпуск TLS (4.3.2) и HTTPS-доступ по
 домену (4.3.3) **локально не проверены** — нужен прод-деплой (публичный DNS, открытые :80/:443,
 выпуск Let's Encrypt). edge/tls-manager в compose под профилем `edge` (не стартуют в dev).
@@ -101,6 +103,61 @@ webhook'и).
 ---
 
 ## Что в работе
+
+**Этап 5.1 — ApiToken со scope'ами + аутентификация управляющих запросов (написано, build+test(вкл. PG16)+lint зелёные, ждёт коммита):**
+- **Решения человека (развилки 5.1):** (1) токен **page-scoped** → добавить `status_page_id` в `TokenCreate`
+  (как 2.5/2.6/3.10); (2) scope'ы — **грубо read/write** (write⊇read); (3) **добавить GET /tokens** сейчас.
+- **Контракт расширен:** `TokenScope` enum `[read, write]`; `TokenCreate` +required `status_page_id`,
+  `scopes: [TokenScope]`; `TokenCreated` +`status_page_id`+required `scopes`; новая `Token` (id/
+  status_page_id/name/scopes/last_used_at/created_at — без значения/хэша); `GET /tokens?status_page_id`
+  → `[Token]`. Глобальный `security` уже допускал BearerAuth|ApiToken (не менялся). Типы перегенерированы
+  (TS+Go), openapi провалиден (оба gen прошли).
+- **Миграция** `00011_api_tokens.sql` (БД→**11**): `api_tokens` (id, status_page_id FK CASCADE, token_hash
+  text, name, scopes text[] DEFAULT '{}', last_used_at, created_at/updated_at). unique-индекс по token_hash,
+  idx по status_page_id, триггер updated_at. scopes — TEXT[] (не pg-enum: набор задаёт контракт, как
+  channel/scope подписчиков). Проверено up/down/up на PG16.
+- **Домен** `apitoken.go`: `TokenScope` (ScopeRead/ScopeWrite, IsValid, AllTokenScopes), `APIToken`
+  (без token_hash — он не покидает store/security), `HasScope` (**write подразумевает read**), `CanWrite`,
+  `NormalizeScopes` (валидация+дедуп; пустой набор разрешён, дефолт решает API). Юнит-тест.
+- **security** `token.go`: `GenerateAPIToken` (32 байта rand, префикс `hp_`, base64url) → (plaintext, hex
+  SHA-256-хэш); `HashAPIToken`. В БД только хэш (§9), plaintext отдаётся единожды. Юнит-тест.
+- **store** `api_tokens.go`: CreateAPIToken/APITokenByHash/APITokenByID/ListAPITokensByPage/TouchAPIToken
+  (last_used_at=now)/DeleteAPIToken. sqlc `queries/api_tokens.sql` → регенерация db (sqlc 1.31.1 brew).
+- **Middleware** (`middleware.go`, ПЕРЕРАБОТАН): вместо `userCtxKey domain.User` теперь `principalCtxKey`
+  с `principal{operator *User | token *APIToken}` (ровно одно ненулевое). `requireAuth`: префикс `Bearer `
+  → операторский JWT (как раньше); сырое значение `Authorization` → page-токен (`HashAPIToken`→
+  `APITokenByHash`; не найден→401); **scope-энфорсинг** `tokenScopeAllows` по HTTP-методу (GET/HEAD/
+  OPTIONS→read, прочее→write; нехватка→403); `TouchAPIToken` best-effort. Хелперы `userFromContext`
+  (оператор или ok=false для токена), `requireOperator` (403 для токена — account-level операции),
+  `principalFromContext`. `bearerToken` без изменений.
+- **authorizePage** (`access.go`): теперь через `principalOwnsPage(ctx, p, page)` — оператор: владеет
+  аккаунтом страницы; токен: `token.StatusPageID == page.ID`. Все существующие управляющие хендлеры
+  (компоненты/инциденты/работы/подписчики/группы/шаблоны), вызывающие authorizePage, **уже работают под
+  page-токеном** при явном status_page_id (токен валидируется по владению). `handleListPages`/
+  `handleCreatePage` обёрнуты `requireOperator` (создание/список страниц — только оператор).
+- **API** `tokens.go`: `handleCreateToken` (POST /tokens — **только оператор**; name+status_page_id+
+  authorizePage; NormalizeScopes; **пустой scopes→[read,write] полный доступ**, как у Статусмейт; генерит
+  токен, отдаёт TokenCreated с plaintext единожды), `handleListTokens` (GET /tokens?status_page_id,
+  оператор, authorizePage, без значений), `handleDeleteToken` (DELETE /tokens/{id}, оператор,
+  APITokenByID→authorizePage(page)→delete; несуществующий→404). Роуты в admin-группе server.go.
+- **Флаги/решения:**
+  - (1) **Управление токенами — только оператор (JWT)**, не сам page-токен (предотвращает эскалацию;
+    `requireOperator`→403). То же для POST/GET /pages и /auth/me (токен→401/403).
+  - (2) **status_page_id в управляющих эндпоинтах всё ещё обязателен** даже под page-токеном (хендлеры
+    парсят req.StatusPageID/?status_page_id). Сделать его **опциональным при ApiToken** (брать из токена,
+    как в комментариях openapi) — **это 5.2** (полный write-API). Сейчас токен функционален, но должен
+    слать свою же страницу явно.
+  - (3) **Дефолт scopes = полный доступ** при пустом массиве (создаёт владелец страницы; гранулярность —
+    только при явном сужении до read).
+  - (4) Префикс токена `hp_` — для распознавания в логах/секрет-сканерах и отделения от Bearer-JWT.
+- **Проверено:** юнит (domain scopes/HasScope/NormalizeScopes; security gen/hash/uniqueness) +
+  интеграционный `tokens_integration_test` на PG16 (create write/read токенов→list без значений→
+  аутентификация токеном POST/GET компонентов→last_used_at проставлен→read-токен write→403, read→200→
+  чужая страница→404→токен создаёт токен→403→невалидный scope 422→невалидный токен 401→изоляция
+  оператора B 404→отзыв 204→отозванный 401→повтор delete 404→пустой scopes даёт полный доступ).
+  **PASS.** Полный api+store интеграционный прогон зелёный (рефактор middleware не сломал прочие).
+  build/test/vet/gofmt/golangci-lint + admin `npm run build` зелёные. public-ssr не трогал (не импортит
+  api-types; изменения аддитивны). Миграция 00011 up/down/up обратима.
 
 **Этап 4 добивка: 4.4/4.5/4.6/4.2.1/4.3.2/4.3.3 (написано, build+test+lint зелёные, ждёт коммита):**
 - **4.4 white-label:** тумблер `hide_powered_by` в `SettingsForm` (поле уже было в StatusPageUpdate;
@@ -1183,3 +1240,12 @@ _Этап 0 — завершён и закоммичен._
   минует double opt-in (152-ФЗ на операторе); клиентская страница — минимум (отписка). build (go/admin/
   next) + test/vet/gofmt/lint зелёные. **Этап 3 закрыт по коду** (email/telegram/slack; MAX отложен).
   Дальше — Этап 4 (кастомизация/white-label).
+- 2026-06-30 — Этап 5.1 (ApiToken + аутентификация управляющих запросов): миграция 00011_api_tokens
+  (БД→11); домен apitoken (scope read/write, write⊇read); security GenerateAPIToken/HashAPIToken
+  (префикс hp_, хэш в БД); store api_tokens; **middleware переработан** — requireAuth принимает JWT
+  (Bearer) ИЛИ page-токен (Authorization без Bearer) → principal в контексте, scope-энфорсинг по
+  методу (403); authorizePage для обоих субъектов; API POST/GET/DELETE /tokens (только оператор).
+  Контракт расширен с санкции человека (status_page_id в TokenCreate, TokenScope enum, GET /tokens,
+  схема Token); типы перегенерированы. Юнит + интеграционный на PG16 PASS; build/test/vet/lint +
+  admin build зелёные; миграция обратима. Дальше — 5.2 (полный write-API: status_page_id
+  опционален при ApiToken — берётся из токена).

@@ -2038,7 +2038,35 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Список API-токенов страницы
+         * @description Возвращает токены страницы без значений (только метаданные). Только операторский JWT.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Страница, чьи токены вернуть. */
+                    status_page_id: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Token"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         put?: never;
         /** Создать API-токен */
         post: {
@@ -3192,17 +3220,35 @@ export interface components {
             scope?: components["schemas"]["SubscriberScope"];
             component_ids?: string[];
         };
+        /** @enum {string} */
+        TokenScope: "read" | "write";
         TokenCreate: {
             name: string;
-            scopes?: string[];
+            /** Format: uuid */
+            status_page_id: string;
+            scopes?: components["schemas"]["TokenScope"][];
         };
         TokenCreated: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            status_page_id: string;
             name: string;
             /** @description Показывается единожды */
             token: string;
-            scopes?: string[];
+            scopes: components["schemas"]["TokenScope"][];
+        };
+        Token: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            status_page_id: string;
+            name: string;
+            scopes: components["schemas"]["TokenScope"][];
+            /** Format: date-time */
+            last_used_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
         };
         PublicPage: {
             name: string;

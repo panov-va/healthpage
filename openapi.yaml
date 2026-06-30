@@ -1013,6 +1013,27 @@ paths:
 
   # ─────────────────────────────── TOKENS ────────────────────────────────
   /tokens:
+    get:
+      tags: [Tokens]
+      summary: Список API-токенов страницы
+      description: >
+        Возвращает токены страницы без значений (только метаданные). Только операторский JWT.
+      parameters:
+        - name: status_page_id
+          in: query
+          required: true
+          description: Страница, чьи токены вернуть.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Token' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [Tokens]
       summary: Создать API-токен
@@ -1929,25 +1950,48 @@ components:
           items: { type: string, format: uuid }
 
     # ── токены ──
+    # API-токен привязан к одной странице (ApiToken.status_page_id). scope'ы — read|write
+    # (write подразумевает read). Пустой scopes при создании → полный доступ (read+write).
+    TokenScope:
+      type: string
+      enum: [read, write]
+
     TokenCreate:
       type: object
-      required: [name]
+      required: [name, status_page_id]
       properties:
         name: { type: string }
+        # Страница, к которой привязывается токен.
+        status_page_id: { type: string, format: uuid }
         scopes:
           type: array
-          items: { type: string }
+          items: { $ref: '#/components/schemas/TokenScope' }
 
     TokenCreated:
       type: object
-      required: [id, name, token]
+      required: [id, status_page_id, name, token, scopes]
       properties:
         id: { type: string, format: uuid }
+        status_page_id: { type: string, format: uuid }
         name: { type: string }
         token: { type: string, description: "Показывается единожды" }
         scopes:
           type: array
-          items: { type: string }
+          items: { $ref: '#/components/schemas/TokenScope' }
+
+    # Метаданные токена (без значения/хэша) — для списка в админке.
+    Token:
+      type: object
+      required: [id, status_page_id, name, scopes, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status_page_id: { type: string, format: uuid }
+        name: { type: string }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/TokenScope' }
+        last_used_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
 
     # ── публичная сводка ──
     # Публично-безопасное подмножество StatusPage для рендера публичной страницы

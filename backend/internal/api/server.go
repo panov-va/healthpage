@@ -147,6 +147,11 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/subscribers", s.handleListSubscribers)
 			r.Post("/subscribers", s.handleCreateSubscriber)
 			r.Delete("/subscribers/{id}", s.handleDeleteSubscriber)
+
+			// API-токены страницы (этап 5.1). Управление — только оператор (JWT), не сам токен.
+			r.Get("/tokens", s.handleListTokens)
+			r.Post("/tokens", s.handleCreateToken)
+			r.Delete("/tokens/{id}", s.handleDeleteToken)
 		})
 	})
 

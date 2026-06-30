@@ -254,6 +254,17 @@ type AcmeChallenge struct {
 	CreatedAt time.Time
 }
 
+type ApiToken struct {
+	ID           uuid.UUID
+	StatusPageID uuid.UUID
+	TokenHash    string
+	Name         string
+	Scopes       []string
+	LastUsedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type Component struct {
 	ID            uuid.UUID
 	StatusPageID  uuid.UUID

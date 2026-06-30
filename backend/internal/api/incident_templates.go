@@ -3,8 +3,6 @@ package api
 import (
 	"net/http"
 
-	"github.com/google/uuid"
-
 	"github.com/healthpage/backend/internal/domain"
 )
 
@@ -59,14 +57,11 @@ func (s *server) handleCreateIncidentTemplate(w http.ResponseWriter, r *http.Req
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	pageID, err := uuid.Parse(req.StatusPageID)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, req.StatusPageID)
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	if req.Name == "" {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "name обязателен")
 		return
@@ -101,15 +96,11 @@ func (s *server) handleCreateIncidentTemplate(w http.ResponseWriter, r *http.Req
 }
 
 func (s *server) handleListIncidentTemplates(w http.ResponseWriter, r *http.Request) {
-	raw := r.URL.Query().Get("status_page_id")
-	pageID, err := uuid.Parse(raw)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, r.URL.Query().Get("status_page_id"))
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	templates, err := s.store.ListIncidentTemplates(r.Context(), pageID)
 	if err != nil {
 		writeServerError(w, err)

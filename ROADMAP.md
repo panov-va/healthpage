@@ -441,7 +441,21 @@ white-label убирает брендинг; виджет встраиваетс
       (создание/список/отзыв; аутентификация токеном; scope 403/200; привязка к странице→404; токен не
       создаёт токен→403; невалидный/отозванный→401; изоляция операторов; last_used_at). build/test/vet/
       gofmt/golangci-lint + admin build зелёные; миграция up/down/up обратима. Ждёт коммита.
-- [ ] **5.2** Полный write-API (компоненты/инциденты/работы/подписчики/токены) по openapi.yaml §7.2.
+- [x] **5.2** Полный write-API (компоненты/инциденты/работы/подписчики/токены) по openapi.yaml §7.2.
+      — ✅ Все эндпоинты §7.2 уже существовали (этапы 1–3 + токены 5.1); 5.2 сделал их полноценно
+      рабочими под page-токеном. **Контракт расширен с санкции человека:** `status_page_id` убран из
+      `required` в `IncidentCreate`/`MaintenanceCreate`/`IncidentTemplateCreate`/`SubscriberCreate`
+      (+комментарий «обязателен при JWT; при ApiToken из токена» — симметрично с уже опциональным
+      `ComponentCreate` и GET-эндпоинтами, query которых уже `required:false`). Типы перегенерированы.
+      Backend: общий резолвер `resolveManagedPage(w, r, raw)` (access.go) — оператор: status_page_id
+      обязателен (422); page-токен: страница из токена, переданный raw должен совпадать (иначе 404).
+      Все 5 list + 5 create хендлеров (components/incidents/incident-templates/maintenances/subscribers)
+      переведены на него. PATCH/DELETE/updates уже авторизовались по ресурсу через `authorizePage` —
+      под токеном работают без правок. Интеграционный тест на PG16 (`write_api_token_integration_test`):
+      под write-токеном БЕЗ status_page_id — CRUD компонента, **жизненный цикл инцидента
+      open→update→resolve→delete**, работы create→in_progress→delete, подписчики create→list→delete,
+      шаблоны create→list; чужой status_page_id под токеном→404; оператор без status_page_id→422.
+      **PASS.** build/test/vet/gofmt/golangci-lint + admin build зелёные. Ждёт коммита.
 - [ ] **5.3** Входящие webhook'и: Grafana, Prometheus, PagerDuty, generic; маппинг на компоненты;
       HMAC-подпись; идемпотентность по dedup-ключу. (Форматы payload — позже, см. DESIGN.)
 - [ ] **5.4** Исходящие webhook'и: Mattermost / произвольный URL (`worker-webhook`).

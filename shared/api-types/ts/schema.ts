@@ -3066,7 +3066,7 @@ export interface components {
              * Format: uuid
              * @description Страница, к которой относится инцидент
              */
-            status_page_id: string;
+            status_page_id?: string;
             title: string;
             status: components["schemas"]["IncidentStatus"];
             impact: components["schemas"]["IncidentImpact"];
@@ -3115,7 +3115,7 @@ export interface components {
              * Format: uuid
              * @description Страница, к которой относится шаблон
              */
-            status_page_id: string;
+            status_page_id?: string;
             name: string;
             title_tmpl?: string;
             body_tmpl?: string;
@@ -3159,7 +3159,7 @@ export interface components {
              * Format: uuid
              * @description Страница, к которой относятся работы
              */
-            status_page_id: string;
+            status_page_id?: string;
             title: string;
             description?: string;
             /** Format: date-time */
@@ -3208,7 +3208,7 @@ export interface components {
              * Format: uuid
              * @description Страница, на которую подписывается
              */
-            status_page_id: string;
+            status_page_id?: string;
             channel: components["schemas"]["SubscriberChannel"];
             address: string;
             scope?: components["schemas"]["SubscriberScope"];

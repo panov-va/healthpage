@@ -99,15 +99,11 @@ type addMaintenanceUpdateRequest struct {
 // Требует ?status_page_id; авторизация по владению. Работы не имеют признака видимости, поэтому
 // данные совпадают с публичным списком — переиспользуем тот же store-метод.
 func (s *server) handleListMaintenances(w http.ResponseWriter, r *http.Request) {
-	raw := r.URL.Query().Get("status_page_id")
-	pageID, err := uuid.Parse(raw)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, r.URL.Query().Get("status_page_id"))
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	statusFilter, ok := parseMaintenanceStatusFilter(w, r)
 	if !ok {
 		return
@@ -146,14 +142,11 @@ func (s *server) handleCreateMaintenance(w http.ResponseWriter, r *http.Request)
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	pageID, err := uuid.Parse(req.StatusPageID)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, req.StatusPageID)
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	if req.Title == "" {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "title обязателен")
 		return

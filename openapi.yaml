@@ -1759,8 +1759,9 @@ components:
 
     IncidentCreate:
       type: object
-      required: [status_page_id, title, status, impact, body]
+      required: [title, status, impact, body]
       properties:
+        # Обязателен при операторском JWT; при ApiToken выводится из токена и должен совпадать, если передан.
         status_page_id: { type: string, format: uuid, description: "Страница, к которой относится инцидент" }
         title: { type: string }
         status: { $ref: '#/components/schemas/IncidentStatus' }
@@ -1817,8 +1818,9 @@ components:
 
     IncidentTemplateCreate:
       type: object
-      required: [status_page_id, name]
+      required: [name]
       properties:
+        # Обязателен при операторском JWT; при ApiToken выводится из токена и должен совпадать, если передан.
         status_page_id: { type: string, format: uuid, description: "Страница, к которой относится шаблон" }
         name: { type: string }
         title_tmpl: { type: string }
@@ -1870,8 +1872,9 @@ components:
 
     MaintenanceCreate:
       type: object
-      required: [status_page_id, title, scheduled_start, scheduled_end]
+      required: [title, scheduled_start, scheduled_end]
       properties:
+        # Обязателен при операторском JWT; при ApiToken выводится из токена и должен совпадать, если передан.
         status_page_id: { type: string, format: uuid, description: "Страница, к которой относятся работы" }
         title: { type: string }
         description: { type: string }
@@ -1927,8 +1930,9 @@ components:
 
     SubscriberCreate:
       type: object
-      required: [status_page_id, channel, address]
+      required: [channel, address]
       properties:
+        # Обязателен при операторском JWT; при ApiToken выводится из токена и должен совпадать, если передан.
         status_page_id: { type: string, format: uuid, description: "Страница, на которую подписывается" }
         channel: { $ref: '#/components/schemas/SubscriberChannel' }
         address: { type: string }

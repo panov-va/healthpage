@@ -18,10 +18,12 @@
 ниже в «Что в работе»). 4.1 тема/тёмный режим/логотип/favicon/таймзона; 4.2 приватные по паролю +
 noindex; 4.2.1 приватные по списку email + magic-link; 4.3.1 управление доменом + CNAME; 4.3.2
 ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 4.4 white-label; 4.5 custom SMTP;
-4.6 виджет-бейдж. **Этап 5 (API и интеграции) НАЧАТ: 5.1 ГОТОВ ПО КОДУ** (ApiToken со scope'ами +
-аутентификация управляющих запросов; ждёт коммита; детали в «Что в работе»). **Следующий шаг:** 5.2 —
-полный write-API под page-токеном (status_page_id опционален при ApiToken — берётся из токена), затем
-5.3 входящие webhook'и (Grafana/Prometheus/PagerDuty/generic + WebhookIntegration + HMAC), 5.4 исходящие.
+4.6 виджет-бейдж. **Этап 5 (API и интеграции) В РАБОТЕ: 5.1 + 5.2 ГОТОВЫ ПО КОДУ** (ApiToken со
+scope'ами + аутентификация; полный write-API под page-токеном; ждут коммита; детали в «Что в работе»).
+5.2 сделал status_page_id опциональным при ApiToken (берётся из токена) для всех list/create эндпоинтов.
+**Следующий шаг:** 5.3 — входящие webhook'и (Grafana/Prometheus/PagerDuty/generic + `WebhookIntegration` +
+HMAC + идемпотентность по dedup-ключу), затем 5.4 — исходящие webhook'и (Mattermost/произвольный URL;
+worker-webhook уже потребляет q.slack — добавить q.webhook.out).
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** реальный выпуск TLS (4.3.2) и HTTPS-доступ по
 домену (4.3.3) **локально не проверены** — нужен прод-деплой (публичный DNS, открытые :80/:443,
 выпуск Let's Encrypt). edge/tls-manager в compose под профилем `edge` (не стартуют в dev).
@@ -103,6 +105,32 @@ ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 
 ---
 
 ## Что в работе
+
+**Этап 5.2 — полный write-API под page-токеном (написано, build+test(вкл. PG16)+lint+admin build зелёные, ждёт коммита):**
+- **Решение человека:** убрать `status_page_id` из `required` в `IncidentCreate`/`MaintenanceCreate`/
+  `IncidentTemplateCreate`/`SubscriberCreate` — чтобы page-токен мог опускать (берётся из токена),
+  симметрично с уже опциональным `ComponentCreate` и GET-эндпоинтами (их query `status_page_id` уже
+  `required:false`). Типы перегенерированы (TS+Go), openapi провалиден.
+- **Все эндпоинты §7.2 уже существовали** (components/incidents/maintenances/subscribers — этапы 1–3;
+  tokens — 5.1). 5.2 — НЕ новые эндпоинты, а сделать их полноценно рабочими под page-токеном.
+- **Backend:** общий резолвер `resolveManagedPage(w, r, raw)` (access.go): оператор → status_page_id
+  обязателен (422 при отсутствии/невалидности); page-токен → страница из токена, переданный raw должен
+  совпадать с ней (иначе 404, как чужая страница). Переведены 10 хендлеров — list+create для
+  components/incidents/incident-templates/maintenances/subscribers (раньше каждый сам парсил
+  status_page_id + authorizePage; теперь единый резолвер; у components list код ошибки сменился 400→422).
+  **PATCH/DELETE/updates НЕ трогал** — они уже авторизуются по StatusPageID загруженного ресурса через
+  `authorizePage`, который с 5.1 поддерживает оба субъекта → под токеном работают без правок.
+  `/tokens` остаются operator-only (5.1), резолвер не применяется.
+- **Флаги:** (1) под токеном чужой status_page_id (в теле или query) → 404 (а не молчаливая подмена на
+  свою страницу) — защита от записи не на ту страницу. (2) у `handleListComponents` код «нет
+  status_page_id» сменился 400→422 (унификация; ни один тест не пинил 400).
+- **Проверено:** интеграционный `write_api_token_integration_test` на PG16 — под write-токеном БЕЗ
+  status_page_id: CRUD компонента (create+list), **жизненный цикл инцидента investigating→identified
+  (update)→PATCH impact→resolved→delete**, работы create→in_progress→delete, подписчики
+  create→list→delete, шаблоны create→list; чужой status_page_id под токеном→404 (тело и query); свой→ок;
+  оператор без status_page_id→422. **PASS.** Полный go test (вкл. все интеграционные) + vet/gofmt/
+  golangci-lint + admin `npm run build` зелёные. (Хелперы теста: `rawTokenReq` из 5.1, `decodeBody`/
+  `wantStatus` добавлены в write_api_token_integration_test.go.)
 
 **Этап 5.1 — ApiToken со scope'ами + аутентификация управляющих запросов (написано, build+test(вкл. PG16)+lint зелёные, ждёт коммита):**
 - **Решения человека (развилки 5.1):** (1) токен **page-scoped** → добавить `status_page_id` в `TokenCreate`
@@ -1249,3 +1277,9 @@ _Этап 0 — завершён и закоммичен._
   схема Token); типы перегенерированы. Юнит + интеграционный на PG16 PASS; build/test/vet/lint +
   admin build зелёные; миграция обратима. Дальше — 5.2 (полный write-API: status_page_id
   опционален при ApiToken — берётся из токена).
+- 2026-06-30 — Этап 5.2 (полный write-API под page-токеном): общий `resolveManagedPage` (оператор —
+  status_page_id обязателен → 422; токен — из токена, чужой → 404) на 10 list/create хендлеров;
+  PATCH/DELETE/updates уже работали под токеном через authorizePage. Контракт: status_page_id убран
+  из required в 4 Create-схемах (санкция человека); типы перегенерированы. Интеграционный на PG16
+  (полный lifecycle инцидента + CRUD всех ресурсов под токеном без status_page_id) PASS; build/test/
+  vet/lint + admin build зелёные. Дальше — 5.3 (входящие webhook'и + WebhookIntegration + HMAC).

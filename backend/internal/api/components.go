@@ -190,15 +190,11 @@ func (s *server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 // ── Компоненты ──
 
 func (s *server) handleListComponents(w http.ResponseWriter, r *http.Request) {
-	raw := r.URL.Query().Get("status_page_id")
-	pageID, err := uuid.Parse(raw)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, r.URL.Query().Get("status_page_id"))
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	comps, err := s.store.ListComponentsByPage(r.Context(), pageID)
 	if err != nil {
 		writeServerError(w, err)
@@ -216,14 +212,11 @@ func (s *server) handleCreateComponent(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	pageID, err := uuid.Parse(req.StatusPageID)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, req.StatusPageID)
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	if req.Name == "" {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "name обязателен")
 		return

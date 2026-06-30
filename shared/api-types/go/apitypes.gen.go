@@ -386,8 +386,8 @@ type IncidentCreate struct {
 	Status     IncidentStatus       `json:"status"`
 
 	// StatusPageId Страница, к которой относится инцидент
-	StatusPageId openapi_types.UUID `json:"status_page_id"`
-	Title        string             `json:"title"`
+	StatusPageId *openapi_types.UUID `json:"status_page_id,omitempty"`
+	Title        string              `json:"title"`
 }
 
 // IncidentImpact defines model for IncidentImpact.
@@ -437,8 +437,8 @@ type IncidentTemplateCreate struct {
 	Name              string               `json:"name"`
 
 	// StatusPageId Страница, к которой относится шаблон
-	StatusPageId openapi_types.UUID `json:"status_page_id"`
-	TitleTmpl    *string            `json:"title_tmpl,omitempty"`
+	StatusPageId *openapi_types.UUID `json:"status_page_id,omitempty"`
+	TitleTmpl    *string             `json:"title_tmpl,omitempty"`
 }
 
 // IncidentTemplatePatch defines model for IncidentTemplatePatch.
@@ -496,8 +496,8 @@ type MaintenanceCreate struct {
 	ScheduledStart time.Time             `json:"scheduled_start"`
 
 	// StatusPageId Страница, к которой относятся работы
-	StatusPageId openapi_types.UUID `json:"status_page_id"`
-	Title        string             `json:"title"`
+	StatusPageId *openapi_types.UUID `json:"status_page_id,omitempty"`
+	Title        string              `json:"title"`
 }
 
 // MaintenanceList defines model for MaintenanceList.
@@ -712,7 +712,7 @@ type SubscriberCreate struct {
 	Scope        *SubscriberScope      `json:"scope,omitempty"`
 
 	// StatusPageId Страница, на которую подписывается
-	StatusPageId openapi_types.UUID `json:"status_page_id"`
+	StatusPageId *openapi_types.UUID `json:"status_page_id,omitempty"`
 }
 
 // SubscriberScope defines model for SubscriberScope.

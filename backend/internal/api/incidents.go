@@ -105,15 +105,11 @@ type addIncidentUpdateRequest struct {
 // handleListIncidents — админский список инцидентов страницы (включая скрытые) с фильтрами и
 // пагинацией. Требует ?status_page_id (при операторском JWT); авторизация по владению страницей.
 func (s *server) handleListIncidents(w http.ResponseWriter, r *http.Request) {
-	raw := r.URL.Query().Get("status_page_id")
-	pageID, err := uuid.Parse(raw)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, r.URL.Query().Get("status_page_id"))
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	filter, ok := parseIncidentFilter(w, r)
 	if !ok {
 		return
@@ -152,14 +148,11 @@ func (s *server) handleCreateIncident(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	pageID, err := uuid.Parse(req.StatusPageID)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, req.StatusPageID)
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	if req.Title == "" {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "title обязателен")
 		return

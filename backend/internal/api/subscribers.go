@@ -53,14 +53,11 @@ type subscriberCreateRequest struct {
 // handleListSubscribers возвращает подписчиков страницы (вкл. неподтверждённых), новые сверху,
 // с пагинацией. Требует status_page_id и владение страницей.
 func (s *server) handleListSubscribers(w http.ResponseWriter, r *http.Request) {
-	pageID, err := uuid.Parse(r.URL.Query().Get("status_page_id"))
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, r.URL.Query().Get("status_page_id"))
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 	_, perPage, offset := parsePagination(r)
 	subs, err := s.store.ListSubscribersByPage(r.Context(), pageID, perPage, offset)
 	if err != nil {
@@ -83,14 +80,11 @@ func (s *server) handleCreateSubscriber(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	pageID, err := uuid.Parse(req.StatusPageID)
-	if err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+	page, ok := s.resolveManagedPage(w, r, req.StatusPageID)
+	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, pageID); !ok {
-		return
-	}
+	pageID := page.ID
 
 	channel := domain.SubscriberChannel(req.Channel)
 	if !channel.IsPush() {

@@ -47,6 +47,37 @@ func (s *server) authorizePage(w http.ResponseWriter, r *http.Request, pageID uu
 	return page, true
 }
 
+// resolveManagedPage определяет и авторизует страницу управляющего запроса по значению
+// status_page_id (из query или тела; "" — не передано).
+//   - Оператор (JWT): status_page_id обязателен → 422 при отсутствии/невалидности.
+//   - Page-токен (ApiToken): страница берётся из токена; переданный status_page_id должен
+//     совпадать с ней, иначе 404 (чужая/несуществующая страница).
+//
+// При ошибке сам пишет ответ и возвращает ok=false. Возвращает загруженную страницу.
+func (s *server) resolveManagedPage(w http.ResponseWriter, r *http.Request, raw string) (domain.StatusPage, bool) {
+	p, ok := principalFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "не аутентифицирован")
+		return domain.StatusPage{}, false
+	}
+	if p.isToken() {
+		if raw != "" {
+			id, err := uuid.Parse(raw)
+			if err != nil || id != p.token.StatusPageID {
+				writeError(w, http.StatusNotFound, "not_found", "страница не найдена")
+				return domain.StatusPage{}, false
+			}
+		}
+		return s.authorizePage(w, r, p.token.StatusPageID)
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "требуется status_page_id (uuid)")
+		return domain.StatusPage{}, false
+	}
+	return s.authorizePage(w, r, id)
+}
+
 // principalOwnsPage сообщает, имеет ли субъект доступ к странице.
 func (s *server) principalOwnsPage(ctx context.Context, p principal, page domain.StatusPage) bool {
 	if p.isToken() {

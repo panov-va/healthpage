@@ -40,6 +40,15 @@ func (p *capturePublisher) PublishNotificationDelayed(_ context.Context, _, _ st
 	return nil
 }
 
+func (p *capturePublisher) PublishWebhookOut(_ context.Context, body []byte) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var m notify.Message
+	_ = json.Unmarshal(body, &m)
+	p.msgs = append(p.msgs, m)
+	return nil
+}
+
 func (p *capturePublisher) count() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()

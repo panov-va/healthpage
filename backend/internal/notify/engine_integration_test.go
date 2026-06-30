@@ -144,3 +144,109 @@ func TestEngineIntegration(t *testing.T) {
 		t.Errorf("payload: %v / %+v", err, p)
 	}
 }
+
+// Живой e2e исходящего webhook-канала (этап 5.4): webhook-подписчик → движок публикует в
+// webhooks.out → сообщение появляется в q.webhook.out с channel=webhook и адресом-URL.
+// Запуск — те же env, что у TestEngineIntegration.
+func TestEngineIntegrationWebhookOut(t *testing.T) {
+	dsn := os.Getenv("HEALTHPAGE_TEST_DB")
+	amqpURL := os.Getenv("HEALTHPAGE_TEST_AMQP")
+	if dsn == "" || amqpURL == "" {
+		t.Skip("HEALTHPAGE_TEST_DB / HEALTHPAGE_TEST_AMQP not set; skipping integration test")
+	}
+	ctx := context.Background()
+
+	st, err := store.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	defer st.Close()
+
+	conn, err := queue.Dial(amqpURL)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ch, err := conn.Channel()
+	if err != nil {
+		t.Fatalf("channel: %v", err)
+	}
+	defer func() { _ = ch.Close() }()
+	if err := queue.DeclareTopology(ch); err != nil {
+		t.Fatalf("declare topology: %v", err)
+	}
+	if _, err := ch.QueuePurge(queue.QueueWebhookOut, false); err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+
+	pub, err := queue.NewPublisher(conn)
+	if err != nil {
+		t.Fatalf("publisher: %v", err)
+	}
+	defer func() { _ = pub.Close() }()
+
+	raw, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("raw pool: %v", err)
+	}
+	defer raw.Close()
+
+	email := "it-wh-" + uuid.NewString() + "@example.test"
+	user, account, err := st.CreateUserWithAccount(ctx, email, "hash", "IT", "IT acc", "ru")
+	if err != nil {
+		t.Fatalf("CreateUserWithAccount: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = raw.Exec(ctx, "DELETE FROM accounts WHERE id=$1", account.ID)
+		_, _ = raw.Exec(ctx, "DELETE FROM users WHERE id=$1", user.ID)
+	})
+
+	slug := "itwh-" + uuid.NewString()[:8]
+	page, err := st.CreateStatusPage(ctx, account.ID, user.ID, "Demo", "", slug, "UTC", "ru", "public")
+	if err != nil {
+		t.Fatalf("CreateStatusPage: %v", err)
+	}
+
+	const hookURL = "https://mattermost.example/hooks/abc123"
+	if _, err := st.CreateSubscriber(ctx, domain.Subscriber{
+		StatusPageID: page.ID, Channel: domain.ChannelWebhook, Address: hookURL,
+		Confirmed: true, Scope: domain.ScopePage,
+	}); err != nil {
+		t.Fatalf("CreateSubscriber: %v", err)
+	}
+
+	eng := notify.New(st, pub, nil)
+	inc := domain.Incident{
+		ID: uuid.New(), StatusPageID: page.ID, Title: "DB down",
+		CurrentStatus: domain.IncidentInvestigating, Impact: domain.ImpactMajor,
+	}
+	if err := eng.IncidentCreated(ctx, inc, "Investigating"); err != nil {
+		t.Fatalf("IncidentCreated: %v", err)
+	}
+
+	var got notify.Message
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		d, ok, err := ch.Get(queue.QueueWebhookOut, true)
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		if ok {
+			if err := json.Unmarshal(d.Body, &got); err != nil {
+				t.Fatalf("unmarshal message: %v", err)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("сообщение не пришло в q.webhook.out за 3s")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if got.Channel != string(domain.ChannelWebhook) || got.Address != hookURL {
+		t.Errorf("channel/address = %s/%s, want webhook/%s", got.Channel, got.Address, hookURL)
+	}
+	if got.NotificationID == "" {
+		t.Error("в сообщении нет notification_id")
+	}
+}

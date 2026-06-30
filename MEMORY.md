@@ -18,14 +18,14 @@
 ниже в «Что в работе»). 4.1 тема/тёмный режим/логотип/favicon/таймзона; 4.2 приватные по паролю +
 noindex; 4.2.1 приватные по списку email + magic-link; 4.3.1 управление доменом + CNAME; 4.3.2
 ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 4.4 white-label; 4.5 custom SMTP;
-4.6 виджет-бейдж. **Этап 5 (API и интеграции) В РАБОТЕ: 5.1 + 5.2 + 5.3 ГОТОВЫ ПО КОДУ** (ApiToken +
-аутентификация; полный write-API под page-токеном; входящие webhook'и grafana/prometheus; ждут
-коммита; детали в «Что в работе»). 5.2 сделал status_page_id опциональным при ApiToken (берётся из
-токена). 5.3 — только grafana+prometheus (generic/pagerduty отложены, 501); CRUD `/webhook-integrations`
-+ HMAC (X-Signature) + идемпотентность по dedup-ключу (один открытый инцидент на ключ).
-**Следующий шаг:** 5.4 — исходящие webhook'и (Mattermost/произвольный URL; worker-webhook уже
-потребляет q.slack — добавить потребление q.webhook.out + публикацию исходящих событий). После 5.4
-Этап 5 закрыт (с учётом отложенных generic/pagerduty).
+4.6 виджет-бейдж. **Этап 5 (API и интеграции) — ЗАКРЫТ ПО КОДУ** (5.1–5.4, ждут коммита; детали в
+«Что в работе»). 5.1 ApiToken+аутентификация; 5.2 полный write-API под page-токеном (status_page_id
+опционален при ApiToken); 5.3 входящие webhook'и **grafana+prometheus** (generic/pagerduty отложены →
+501; CRUD `/webhook-integrations` + HMAC + идемпотентность по dedup-ключу); 5.4 исходящие webhook'и
+(channel=webhook → q.webhook.out → worker-webhook POST на URL, Mattermost-совместимый payload).
+**Следующий шаг:** Этап 6 — биллинг и тарифы (ЮKassa, Subscription/Payment, checkout, рекуррентные
+списания, webhook провайдера, feature-flags), ЛИБО по приоритету человека. **Отложено в Этапе 5:**
+inbound generic/pagerduty webhook'и (501) — реализовать по запросу.
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** реальный выпуск TLS (4.3.2) и HTTPS-доступ по
 домену (4.3.3) **локально не проверены** — нужен прод-деплой (публичный DNS, открытые :80/:443,
 выпуск Let's Encrypt). edge/tls-manager в compose под профилем `edge` (не стартуют в dev).
@@ -107,6 +107,44 @@ ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 
 ---
 
 ## Что в работе
+
+**Этап 5.4 — исходящие webhook'и (написано, build+test(вкл. PG16+RabbitMQ e2e)+lint+admin build зелёные, ждёт коммита):**
+- **Контракт НЕ менялся.** Канал `webhook` уже в enum `SubscriberChannel`; `q.webhook.out`/exchange
+  `webhooks.out` — в топологии с 3.2; движок 3.3 уже фанил (но webhook отсекался как не-push).
+  Исходящий webhook = `Subscriber{channel=webhook, address=URL}`.
+- **Решение агента (payload-формат, в рамках §5):** Mattermost/Slack-совместимый — top-level `{text}`
+  (incoming webhook рендерит как сообщение) + структурированные поля `event`/`status_page`/`url`/
+  `incident`|`maintenance` (для произвольных консьюмеров). RU/EN по локали страницы.
+- **Домен** `subscriber.go`: `SubscriberChannel.Deliverable()` = IsPush || webhook (каналы, на которые
+  движок активно доставляет через очередь; rss/ical — pull, не доставляются).
+- **Движок** (`notify`): в `Publisher` добавлен `PublishWebhookOut(ctx, body)`; `dispatch` фильтрует по
+  `Deliverable()` (не IsPush); `publish` роутит — `channel==webhook` → `PublishWebhookOut` (webhooks.out),
+  иначе `PublishNotification` (notifications). Ретраи webhook'а — штатно через `Retry`→
+  `PublishNotificationDelayed` (delayed.events, key `notify.webhook.<event>`).
+- **Топология** (`queue/topology.go`): добавлена привязка `q.webhook.out ← delayed.events` по
+  `notify.webhook.*` — чтобы отложенные ретраи исходящих webhook'ов доходили (первичная публикация —
+  через webhooks.out direct по `webhook.out`). Идемпотентно; объявляется на старте воркеров/queue-setup.
+- **Пакет `internal/webhookout`** (зеркало `internal/slack`, тот же транспорт HTTP POST): `client.go`
+  (`Client.Post` → `PostError{Permanent,RetryAfter}`: 4xx кроме 429→Permanent, 429→RetryAfter, 5xx/сеть→
+  транзиент, битый URL→Permanent), `render.go` (`Render` → payload text+структура, RU/EN dict),
+  `worker.go` (`Worker.Process`→Disposition: идемпотентность по Notification.id, orphan/sent→Ack,
+  Permanent→Ack(дроп), транзиент→Retry/DLQ, mark-sent-fail→Requeue).
+- **`cmd/worker-webhook`:** теперь потребляет ОБЕ очереди — `q.slack` (slack.Worker, 3.9) и
+  `q.webhook.out` (webhookout.Worker, 5.4); общий Publisher+Engine(Retrier), graceful stop обеих.
+- **API** (`subscribers.go`): `handleCreateSubscriber` принимает `webhook` (через `Deliverable()`),
+  валидирует http(s)-URL для webhook; confirmed=true (как прочие ручные). rss/ical → 422.
+- **Admin:** `webhook` добавлен в `MANUAL_SUBSCRIBER_CHANNELS` (форма уже с generic-адресом + channelLabel
+  «Webhook»).
+- **Флаги:** (1) исходящий webhook регистрируется ТОЛЬКО ручным добавлением оператором (нет публичного
+  self-serve — это технический канал). (2) scope/components работает как у прочих каналов. (3) дедуп по
+  URL — повторное добавление того же URL ловится unique(page,channel,address).
+- **Проверено:** юнит — `webhookout` (render incident RU + maintenance EN + ошибки; client 200/204/400/
+  404/429/500/503 классификация + битый URL; worker happy/идемпотент/orphan/permanent-drop/транзиент-
+  retry/исчерпание/malformed), `notify` (webhook фан-аут → PublishWebhookOut, rss отсекается).
+  Интеграционный на PG16 — регистрация webhook-подписчика (URL ок / не-URL 422 / rss 422). **Живой e2e
+  на PG+RabbitMQ** (`notify.TestEngineIntegrationWebhookOut`): webhook-подписчик → IncidentCreated →
+  сообщение в `q.webhook.out` с channel=webhook + address=URL + notification_id. build/test/vet/gofmt/
+  golangci-lint + admin build зелёные. (capturePublisher/fakePublisher в тестах дополнены PublishWebhookOut.)
 
 **Этап 5.3 — входящие webhook'и grafana/prometheus (написано, build+test(вкл. PG16)+lint+admin build зелёные, ждёт коммита):**
 - **Решения человека:** (1) объём — **только grafana + prometheus** (generic/pagerduty отложены →
@@ -1353,3 +1391,10 @@ _Этап 0 — завершён и закоммичен._
   handlers с HMAC + идемпотентным create/close инцидента по dedup-ключу. Контракт расширен (санкция
   человека), типы перегенерированы. Юнит + интеграционный на PG16 PASS; build/test/vet/lint + admin
   build зелёные; миграция обратима. Дальше — 5.4 (исходящие webhook'и, q.webhook.out).
+- 2026-07-01 — Этап 5.4 (исходящие webhook'и): канал webhook стал доставляемым (Deliverable);
+  движок роутит webhook-сообщения в webhooks.out (PublishWebhookOut), push — в notifications;
+  привязка q.webhook.out←delayed.events для ретраев; пакет internal/webhookout (client/render/worker,
+  payload Mattermost-совместимый); worker-webhook потребляет q.slack + q.webhook.out; POST /subscribers
+  принимает channel=webhook (URL); admin +webhook в каналах. Контракт НЕ менялся. Юнит + интеграц.
+  PG16 + живой e2e PG+RabbitMQ PASS; build/test/vet/lint + admin зелёные. **Этап 5 закрыт по коду**
+  (5.1–5.4; inbound generic/pagerduty отложены, 501). Дальше — Этап 6 (биллинг) по приоритету человека.

@@ -50,6 +50,13 @@ func (c SubscriberChannel) IsPush() bool {
 	}
 }
 
+// Deliverable сообщает, что движок уведомлений активно доставляет на канал через очередь:
+// push-каналы (notifications → q.<channel>) и исходящий webhook (webhooks.out → q.webhook.out,
+// этап 5.4). RSS/iCal — pull-фиды (этап 3.6), на них фан-аут не идёт.
+func (c SubscriberChannel) Deliverable() bool {
+	return c.IsPush() || c == ChannelWebhook
+}
+
 // ── Область подписки ──
 
 // SubscriberScope — на что подписан клиент: вся страница или набор компонентов

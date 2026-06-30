@@ -1,8 +1,10 @@
-// Command worker-webhook — воркер HTTP-доставки (этап 3.9). Потребляет очередь q.slack (ручной
-// ack, DESIGN §8.1): идемпотентность по Notification.id, доставка сообщения Block Kit в
-// incoming-webhook URL канала (Subscriber.address), ретраи с backoff через delayed.events, DLQ при
-// исчерпании. Транспорт — HTTP POST; секреты Slack OAuth здесь не нужны (адрес уже сохранён при
-// подписке). На этапе 5.4 этот же воркер обслужит исходящие webhook'и (q.webhook.out).
+// Command worker-webhook — воркер HTTP-доставки (этапы 3.9 + 5.4). Потребляет две очереди (ручной
+// ack, DESIGN §8.1):
+//   - q.slack — доставка Block Kit в incoming-webhook URL Slack-подписчика (этап 3.9);
+//   - q.webhook.out — исходящие webhook'и (Mattermost/произвольный URL, channel=webhook, этап 5.4).
+//
+// Общая механика: идемпотентность по Notification.id, доставка на Subscriber.address (URL), ретраи
+// с backoff через delayed.events, DLQ при исчерпании. Транспорт — HTTP POST.
 //
 // Требует DATABASE_URL и RABBITMQ_URL.
 package main
@@ -20,6 +22,7 @@ import (
 	"github.com/healthpage/backend/internal/queue"
 	"github.com/healthpage/backend/internal/slack"
 	"github.com/healthpage/backend/internal/store"
+	"github.com/healthpage/backend/internal/webhookout"
 )
 
 const prefetch = 16
@@ -60,11 +63,14 @@ func main() {
 	defer func() { _ = pub.Close() }()
 	engine := notify.New(st, pub, nil)
 
-	worker := slack.NewWorker(st, slack.NewClient(nil), engine, cfg.BaseURL, nil)
+	slackWorker := slack.NewWorker(st, slack.NewClient(nil), engine, cfg.BaseURL, nil)
+	outWorker := webhookout.NewWorker(st, webhookout.NewClient(nil), engine, cfg.BaseURL, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := conn.Consume(queue.WorkQueue("slack"), prefetch, func(d queue.Delivery) {
-		switch worker.Process(ctx, d.Body) {
+
+	// q.slack — Slack-подписчики (этап 3.9).
+	slackCh, err := conn.Consume(queue.WorkQueue("slack"), prefetch, func(d queue.Delivery) {
+		switch slackWorker.Process(ctx, d.Body) {
 		case slack.Ack:
 			_ = d.Ack(false)
 		case slack.Reject:
@@ -77,13 +83,31 @@ func main() {
 		cancel()
 		log.Fatalf("consume q.slack: %v", err)
 	}
-	log.Println("worker-webhook: потребление q.slack запущено")
+
+	// q.webhook.out — исходящие webhook'и (Mattermost/произвольный URL, этап 5.4).
+	outCh, err := conn.Consume(queue.QueueWebhookOut, prefetch, func(d queue.Delivery) {
+		switch outWorker.Process(ctx, d.Body) {
+		case webhookout.Ack:
+			_ = d.Ack(false)
+		case webhookout.Reject:
+			_ = d.Nack(false, false) // → DLX → q.dlq.webhook.out
+		case webhookout.Requeue:
+			_ = d.Nack(false, true)
+		}
+	})
+	if err != nil {
+		cancel()
+		_ = slackCh.Close()
+		log.Fatalf("consume q.webhook.out: %v", err)
+	}
+	log.Println("worker-webhook: потребление q.slack и q.webhook.out запущено")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
 	cancel()
-	_ = ch.Close()
+	_ = slackCh.Close()
+	_ = outCh.Close()
 	log.Println("worker-webhook: остановлен")
 }

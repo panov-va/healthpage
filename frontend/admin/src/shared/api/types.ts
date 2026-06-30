@@ -87,11 +87,13 @@ export const MAINTENANCE_STATUSES: MaintenanceStatus[] = [
   "completed",
 ];
 
-// Каналы, доступные оператору для ручного добавления подписчика (push-каналы).
-// rss/ical — pull-фиды, webhook — отдельный поток; через ручное добавление не заводятся.
+// Каналы, доступные оператору для ручного добавления подписчика: push-каналы и исходящий
+// webhook (channel=webhook, address=URL — Mattermost/произвольный, этап 5.4).
+// rss/ical — pull-фиды, через ручное добавление не заводятся.
 export const MANUAL_SUBSCRIBER_CHANNELS: SubscriberChannel[] = [
   "email",
   "telegram",
   "max",
   "slack",
+  "webhook",
 ];

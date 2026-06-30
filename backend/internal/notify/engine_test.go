@@ -82,6 +82,17 @@ func (p *fakePublisher) PublishNotificationDelayed(_ context.Context, channel, e
 	return nil
 }
 
+// PublishWebhookOut — публикация исходящего webhook'а (этап 5.4): фиксируем как channel=webhook.
+func (p *fakePublisher) PublishWebhookOut(_ context.Context, body []byte) error {
+	if p.err != nil {
+		return p.err
+	}
+	var m Message
+	_ = json.Unmarshal(body, &m)
+	p.msgs = append(p.msgs, publishedMsg{channel: m.Channel, event: m.Event, msg: m})
+	return nil
+}
+
 // ── тесты ──
 
 func sub(channel domain.SubscriberChannel, scope domain.SubscriberScope, comps ...uuid.UUID) domain.Subscriber {
@@ -137,6 +148,29 @@ func TestIncidentCreatedFanOut(t *testing.T) {
 	}
 	if gotChannels["max"] || gotChannels["rss"] {
 		t.Errorf("max/rss не должны были получить уведомление, got %v", gotChannels)
+	}
+}
+
+func TestIncidentCreatedFanOutWebhook(t *testing.T) {
+	// Исходящий webhook (этап 5.4) — доставляемый канал: попадает в фан-аут через PublishWebhookOut.
+	whPage := sub(domain.ChannelWebhook, domain.ScopePage)
+	whPage.Address = "https://mm.example/hooks/abc"
+	st := newFakeStore(whPage, sub(domain.ChannelRSS, domain.ScopePage)) // rss не доставляется
+	pub := &fakePublisher{}
+	e := New(st, pub, nil)
+
+	inc := domain.Incident{ID: uuid.New(), StatusPageID: uuid.New(), Title: "API down", CurrentStatus: domain.IncidentInvestigating, Impact: domain.ImpactMajor}
+	if err := e.IncidentCreated(context.Background(), inc, "Investigating"); err != nil {
+		t.Fatalf("IncidentCreated: %v", err)
+	}
+	if len(pub.msgs) != 1 {
+		t.Fatalf("опубликовано %d, want 1 (только webhook): %+v", len(pub.msgs), pub.msgs)
+	}
+	if pub.msgs[0].channel != string(domain.ChannelWebhook) || pub.msgs[0].msg.Address != "https://mm.example/hooks/abc" {
+		t.Errorf("webhook-сообщение некорректно: %+v", pub.msgs[0])
+	}
+	if pub.msgs[0].msg.NotificationID == "" {
+		t.Error("нет notification_id у webhook-сообщения")
 	}
 }
 

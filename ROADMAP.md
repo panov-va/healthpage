@@ -480,11 +480,28 @@ white-label убирает брендинг; виджет встраиваетс
       инцидент→идемпотентный повтор→resolved→закрытие→рецидив; битая подпись/чужой источник/неизвестная
       интеграция→401; generic→501; prometheus; ротация секрета; изоляция операторов). **PASS.**
       build/test/vet/gofmt/golangci-lint + admin build зелёные; миграция up/down/up обратима. Ждёт коммита.
-- [ ] **5.4** Исходящие webhook'и: Mattermost / произвольный URL (`worker-webhook`).
+- [x] **5.4** Исходящие webhook'и: Mattermost / произвольный URL (`worker-webhook`).
       (Slack как подписка уже сделан в этапе 3.)
+      — ✅ **Контракт НЕ менялся** (канал `webhook` уже в enum `SubscriberChannel`; очередь
+      `q.webhook.out` и exchange `webhooks.out` — в топологии с 3.2). Исходящий webhook = подписчик
+      `Subscriber{channel=webhook, address=URL}`. Регистрация — через ручное добавление оператором
+      (`POST /subscribers`, теперь принимает `webhook` + валидирует http(s)-URL; rss/ical по-прежнему
+      422). Домен: `SubscriberChannel.Deliverable()` (push + webhook). Движок (`notify`): фан-аут теперь
+      включает webhook-подписчиков; `Publisher.PublishWebhookOut` — webhook-сообщения идут в
+      `webhooks.out` (а push — в `notifications`); ретраи webhook'а — через `delayed.events` (добавлена
+      привязка `q.webhook.out ← delayed.events` по `notify.webhook.*`). Пакет `internal/webhookout`
+      (зеркало `slack`): `Client.Post` (классификация 4xx/429/5xx), `Render` (payload
+      **Mattermost/Slack-совместимый `{text}` + структурированные поля** event/status_page/url/
+      incident|maintenance, RU/EN), `Worker` (идемпотентность по Notification.id, retry/DLQ).
+      `cmd/worker-webhook` теперь потребляет ОБЕ очереди — `q.slack` (3.9) и `q.webhook.out` (5.4).
+      Admin: `webhook` добавлен в `MANUAL_SUBSCRIBER_CHANNELS` (форма уже принимает URL-адрес).
+      Юнит (webhookout render/client/worker; notify webhook-routing) + интеграционные на PG16
+      (регистрация webhook-подписчика) + **живой e2e на PG+RabbitMQ** (engine→webhooks.out→q.webhook.out,
+      channel=webhook+URL). build/test/vet/gofmt/golangci-lint + admin build зелёные. Ждёт коммита.
 
 **Acceptance:** алерт из Grafana создаёт инцидент идемпотентно; внешний скрипт по токену
 открывает/обновляет/закрывает инцидент; повторные webhook'и не плодят дубли.
+✅ **Этап 5 закрыт по коду** (5.1–5.4; generic/pagerduty inbound отложены — 501, по решению человека).
 
 ---
 

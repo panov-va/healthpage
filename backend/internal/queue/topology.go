@@ -89,6 +89,11 @@ func DeclareTopology(ch *amqp.Channel) error {
 	if err := ch.QueueBind(QueueWebhookOut, webhookOutKey, ExchangeWebhooksOut, false, nil); err != nil {
 		return fmt.Errorf("queue: bind %s→%s: %w", QueueWebhookOut, ExchangeWebhooksOut, err)
 	}
+	// Ретраи исходящих webhook'ов (этап 5.4): отложенная републикация идёт через delayed.events с
+	// ключом notify.webhook.* (как у канальных очередей), поэтому привязываем q.webhook.out и к нему.
+	if err := ch.QueueBind(QueueWebhookOut, notifyBindingKey("webhook"), ExchangeDelayed, false, nil); err != nil {
+		return fmt.Errorf("queue: bind %s→%s: %w", QueueWebhookOut, ExchangeDelayed, err)
+	}
 
 	return nil
 }

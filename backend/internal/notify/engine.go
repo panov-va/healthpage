@@ -31,6 +31,9 @@ type Store interface {
 type Publisher interface {
 	PublishNotification(ctx context.Context, channel, event string, body []byte) error
 	PublishNotificationDelayed(ctx context.Context, channel, event string, body []byte, delay time.Duration) error
+	// PublishWebhookOut — первичная публикация исходящего webhook'а в exchange webhooks.out
+	// (этап 5.4). Ретраи идут через PublishNotificationDelayed (delayed.events → q.webhook.out).
+	PublishWebhookOut(ctx context.Context, body []byte) error
 }
 
 // Engine рассылает уведомления по событиям. Publisher не потокобезопасен (держит один AMQP-канал),
@@ -127,7 +130,7 @@ func (e *Engine) dispatch(
 
 	var errs []error
 	for _, sub := range subs {
-		if !sub.Channel.IsPush() || !sub.WantsEvent(affected) {
+		if !sub.Channel.Deliverable() || !sub.WantsEvent(affected) {
 			continue
 		}
 		n, err := e.store.CreateNotification(ctx, sub.ID, event, body)
@@ -154,7 +157,8 @@ func (e *Engine) dispatch(
 	return errors.Join(errs...)
 }
 
-// publish сериализует доступ к Publisher и шлёт сообщение в exchange notifications.
+// publish сериализует доступ к Publisher и шлёт сообщение: исходящий webhook — в webhooks.out,
+// остальные каналы — в exchange notifications.
 func (e *Engine) publish(ctx context.Context, msg Message) error {
 	raw, err := json.Marshal(msg)
 	if err != nil {
@@ -162,6 +166,9 @@ func (e *Engine) publish(ctx context.Context, msg Message) error {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if msg.Channel == string(domain.ChannelWebhook) {
+		return e.pub.PublishWebhookOut(ctx, raw)
+	}
 	return e.pub.PublishNotification(ctx, msg.Channel, msg.Event, raw)
 }
 

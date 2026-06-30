@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -71,10 +72,11 @@ func (s *server) handleListSubscribers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleCreateSubscriber добавляет подписчика вручную оператором (этап 3.10). Подписчик создаётся
-// сразу подтверждённым (confirmed=true) — оператор отвечает за наличие согласия (152-ФЗ; см.
-// DESIGN §4.3, §9). Поддерживаются только push-каналы (email/telegram/max/slack); rss/ical/webhook
-// добавляются иными путями.
+// handleCreateSubscriber добавляет подписчика вручную оператором (этапы 3.10 + 5.4). Подписчик
+// создаётся сразу подтверждённым (confirmed=true) — оператор отвечает за наличие согласия (152-ФЗ;
+// см. DESIGN §4.3, §9). Поддерживаются доставляемые каналы: push (email/telegram/max/slack) и
+// исходящий webhook (channel=webhook, address=URL — Mattermost/произвольный, этап 5.4). rss/ical —
+// pull-фиды, вручную не заводятся.
 func (s *server) handleCreateSubscriber(w http.ResponseWriter, r *http.Request) {
 	var req subscriberCreateRequest
 	if !decodeJSON(w, r, &req) {
@@ -87,13 +89,18 @@ func (s *server) handleCreateSubscriber(w http.ResponseWriter, r *http.Request) 
 	pageID := page.ID
 
 	channel := domain.SubscriberChannel(req.Channel)
-	if !channel.IsPush() {
+	if !channel.Deliverable() {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request",
-			"ручное добавление поддерживает только каналы email/telegram/max/slack")
+			"ручное добавление поддерживает каналы email/telegram/max/slack/webhook")
 		return
 	}
 	if req.Address == "" {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "address обязателен")
+		return
+	}
+	// Для исходящего webhook адрес — http(s)-URL.
+	if channel == domain.ChannelWebhook && !strings.HasPrefix(req.Address, "http://") && !strings.HasPrefix(req.Address, "https://") {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "webhook address должен быть http(s) URL")
 		return
 	}
 	scope := domain.SubscriberScope(req.Scope)

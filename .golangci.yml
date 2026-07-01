@@ -14,6 +14,12 @@ linters:
     - unused
     - misspell
     - revive
+  exclusions:
+    rules:
+      # В тестах допускаем непроверенные ошибки на закрытии тел ответов и т.п.
+      - path: _test\.go
+        linters:
+          - errcheck
 
 formatters:
   enable:
@@ -21,11 +27,5 @@ formatters:
     - goimports
   settings:
     goimports:
-      local-prefixes: github.com/healthpage/backend
-
-issues:
-  exclude-rules:
-    # В тестах допускаем непроверенные ошибки на закрытии тел ответов и т.п.
-    - path: _test\.go
-      linters:
-        - errcheck
+      local-prefixes:
+        - github.com/healthpage/backend

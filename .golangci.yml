@@ -1,11 +1,12 @@
 # Конфигурация golangci-lint для backend HealthPage.
+# golangci-lint v2 configuration.
+version: "2"
+
 run:
   timeout: 5m
 
 linters:
   enable:
-    - gofmt
-    - goimports
     - govet
     - errcheck
     - staticcheck
@@ -14,9 +15,13 @@ linters:
     - misspell
     - revive
 
-linters-settings:
-  goimports:
-    local-prefixes: github.com/healthpage/backend
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: github.com/healthpage/backend
 
 issues:
   exclude-rules:

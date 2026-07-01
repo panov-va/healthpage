@@ -1,0 +1,144 @@
+# Прод-стек HealthPage. В отличие от docker-compose.yml (dev, build:) здесь образы ТЯНУТСЯ из
+# реестра (GHCR) по тегу — их собирает и пушит CI (.github/workflows/deploy.yml), а на сервере
+# идёт только `docker compose pull && up`. Значения — из ./.env на сервере (не в git).
+#
+# Переменные подстановки:
+#   REGISTRY  — префикс образов, напр. ghcr.io/<owner> (задаётся в .env на сервере)
+#   TAG       — тег деплоя (обычно git sha или latest); задаётся деплоем
+#
+# Ingress: caddy терминирует TLS (авто Let's Encrypt) и роутит по доменам. Кастомные домены
+# клиентов (edge/tls-manager) — профиль edge, включается отдельно (см. DEPLOY.md, стоп-маркер).
+
+x-backend-image: &backend-image
+  image: ${REGISTRY}/healthpage-backend:${TAG:-latest}
+  restart: unless-stopped
+  env_file: [.env]
+  depends_on:
+    postgres: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, public-ssr, admin]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: ${REGISTRY}/healthpage-rabbitmq:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  api:
+    <<: *backend-image
+    # entrypoint образа = /app/api
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "/app/api", "-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker-email:
+    <<: *backend-image
+    entrypoint: ["/app/worker-email"]
+
+  worker-telegram:
+    <<: *backend-image
+    entrypoint: ["/app/worker-telegram"]
+
+  worker-webhook:
+    <<: *backend-image
+    entrypoint: ["/app/worker-webhook"]
+
+  worker-billing:
+    <<: *backend-image
+    entrypoint: ["/app/worker-billing"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  worker-import:
+    <<: *backend-image
+    entrypoint: ["/app/worker-import"]
+
+  public-ssr:
+    image: ${REGISTRY}/healthpage-public-ssr:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # SSR ходит в API по внутренней сети compose.
+      HEALTHPAGE_API_URL: http://api:8080/api/v1
+    depends_on: [api]
+
+  admin:
+    image: ${REGISTRY}/healthpage-admin:${TAG:-latest}
+    restart: unless-stopped
+    # nginx со статикой SPA; /api проксирует Caddy на уровне домена.
+
+  # ── Кастомные домены клиентов (профиль edge, включается отдельно) ──
+  # [ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]: edge слушает :443 и конфликтует с caddy —
+  # интеграцию единого ingress решить перед включением (см. DEPLOY.md §Кастомные домены).
+  tls-manager:
+    <<: *backend-image
+    entrypoint: ["/app/tls-manager"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    profiles: ["edge"]
+
+  edge:
+    <<: *backend-image
+    entrypoint: ["/app/edge"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    profiles: ["edge"]
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitmqdata:
+  caddy_data:
+  caddy_config:

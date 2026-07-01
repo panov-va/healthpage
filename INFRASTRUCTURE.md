@@ -222,14 +222,21 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 
 ## 6. Деплой / prod
 
-> Заполнить при подготовке к запуску. Сейчас — план.
+> **Полный процесс деплоя и CI/CD — в `DEPLOY.md`.** Здесь — краткая сводка.
 
 - On-prem **не делаем**, только SaaS (DESIGN §12).
-- Rate-limiting — на уровне инфраструктуры (ingress / API-gateway), не в коде. В будущем
-  кластере — ingress-контроллер (nginx ingress / Kong / APISIX). Для MVP — преждевременно.
-- Публичная часть (`public-ssr`) деплоится отдельно от админки и должна быть доступнее, чем
-  продукт клиента (DESIGN §9).
-- CI/CD — _TBD_ (на этапе 0 завести сборку/тесты; деплой-пайплайн — позже).
+- **Модель (MVP):** один VPS в РФ (152-ФЗ) + Docker Compose (`docker-compose.prod.yml`), образы из
+  **GHCR**, ingress **Caddy** (авто-TLS), CD — **GitHub Actions** (`.github/workflows/deploy.yml`):
+  push в `main` → CI → build+push образов → SSH-деплой (`migrate` + `compose pull && up`).
+- **[РЕШИТЬ] провайдер РФ** (Yandex Cloud / VK Cloud / Selectel / Timeweb) — см. DEPLOY.md §1.
+- **Прод-образы:** `healthpage-backend` (api + все воркеры + migrate/queue-setup), `healthpage-rabbitmq`
+  (+delayed-плагин), `healthpage-public-ssr` (Next standalone), `healthpage-admin` (nginx+SPA).
+  Dockerfile'ы: `backend/Dockerfile`, `docker/rabbitmq/Dockerfile`, `frontend/*/Dockerfile`.
+- Rate-limiting — на уровне ingress (Caddy/будущий gateway), не в коде MVP.
+- Публичная часть (`public-ssr`) деплоится отдельным образом от админки (DESIGN §9).
+- Секреты — в `/opt/healthpage/.env` на сервере + GitHub Secrets (`DEPLOY_*`); список — DEPLOY.md §4–5.
+- Кастомные домены (`edge`/`tls-manager`, профиль `edge`) — конфликт :443 с Caddy, см. DEPLOY.md §9
+  (**[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]**).
 
 ---
 

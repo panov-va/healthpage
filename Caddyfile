@@ -1,0 +1,34 @@
+# Ingress HealthPage (прод). Caddy автоматически выпускает и продлевает TLS (Let's Encrypt).
+# Домены и email — из окружения (./.env на сервере): PUBLIC_DOMAIN / ADMIN_DOMAIN / API_DOMAIN / ACME_EMAIL.
+#
+# Маршрутизация:
+#   PUBLIC_DOMAIN (+www) → public-ssr (лендинг + публичные страницы /status/<slug>)
+#   ADMIN_DOMAIN         → admin (SPA); /api/* → api (относительный /api/v1 админки работает)
+#   API_DOMAIN           → api (публичный REST); /metrics закрыт (метрики скрейпятся внутри сети)
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_DOMAIN}, www.{$PUBLIC_DOMAIN} {
+	encode gzip
+	reverse_proxy public-ssr:3000
+}
+
+{$ADMIN_DOMAIN} {
+	encode gzip
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy admin:80
+	}
+}
+
+{$API_DOMAIN} {
+	encode gzip
+	# Метрики Prometheus не отдаём наружу — их скрейпят по внутренней сети (api:8080/metrics).
+	@metrics path /metrics
+	respond @metrics 404
+	reverse_proxy api:8080
+}

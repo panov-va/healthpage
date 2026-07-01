@@ -8,6 +8,7 @@ const tabs = [
   { to: "maintenances", label: "Работы", end: false },
   { to: "templates", label: "Шаблоны", end: false },
   { to: "subscribers", label: "Подписчики", end: false },
+  { to: "changelog", label: "Релизы", end: false },
   { to: "settings", label: "Настройки", end: false },
 ];
 

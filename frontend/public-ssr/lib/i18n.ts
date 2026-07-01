@@ -23,12 +23,15 @@ interface Dict {
   status: Record<ComponentStatus, string>;
   updatedAt: string;
   noComponents: string;
+  uptimeOver: string;
   notFoundTitle: string;
   notFoundBody: string;
   poweredBy: string;
 
   // Вкладки и разделы инцидентов/работ (этап 2.10).
-  tabs: { overview: string; incidents: string; maintenances: string };
+  tabs: { overview: string; incidents: string; maintenances: string; changelog: string };
+  changelogTitle: string;
+  noChangelog: string;
   incidentStatus: Record<IncidentStatus, string>;
   impact: Record<IncidentImpact, string>;
   maintenanceStatus: Record<MaintenanceStatus, string>;
@@ -78,11 +81,14 @@ const ru: Dict = {
   },
   updatedAt: "Обновлено",
   noComponents: "Компоненты ещё не добавлены.",
+  uptimeOver: "за {days} дней",
   notFoundTitle: "Страница не найдена",
   notFoundBody: "Запрашиваемая страница статуса не существует или недоступна.",
   poweredBy: "Работает на HealthPage",
 
-  tabs: { overview: "Статус", incidents: "Инциденты", maintenances: "Плановые работы" },
+  tabs: { overview: "Статус", incidents: "Инциденты", maintenances: "Плановые работы", changelog: "Релизы" },
+  changelogTitle: "Релизы",
+  noChangelog: "Записей пока нет.",
   incidentStatus: {
     investigating: "Расследуем",
     identified: "Причина найдена",
@@ -144,11 +150,14 @@ const en: Dict = {
   },
   updatedAt: "Updated",
   noComponents: "No components have been added yet.",
+  uptimeOver: "over {days} days",
   notFoundTitle: "Page not found",
   notFoundBody: "The requested status page does not exist or is unavailable.",
   poweredBy: "Powered by HealthPage",
 
-  tabs: { overview: "Status", incidents: "Incidents", maintenances: "Maintenance" },
+  tabs: { overview: "Status", incidents: "Incidents", maintenances: "Maintenance", changelog: "Changelog" },
+  changelogTitle: "Changelog",
+  noChangelog: "No entries yet.",
   incidentStatus: {
     investigating: "Investigating",
     identified: "Identified",

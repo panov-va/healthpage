@@ -16,6 +16,9 @@ export function AppLayout() {
           <Link to="/billing" style={{ color: "inherit" }}>
             Тариф
           </Link>
+          <Link to="/import" style={{ color: "inherit" }}>
+            Импорт
+          </Link>
           <LogoutButton />
         </div>
       </header>

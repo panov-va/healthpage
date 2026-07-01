@@ -231,6 +231,36 @@ type BillingPeriod string
 // BillingPlan defines model for BillingPlan.
 type BillingPlan string
 
+// ChangelogEntry defines model for ChangelogEntry.
+type ChangelogEntry struct {
+	// Body Текст записи (plain text; на публичной странице выводится экранированным)
+	Body      *string            `json:"body,omitempty"`
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Published Опубликована ли запись (черновики скрыты публично)
+	Published    bool               `json:"published"`
+	PublishedAt  *time.Time         `json:"published_at"`
+	StatusPageId openapi_types.UUID `json:"status_page_id"`
+	Title        string             `json:"title"`
+	UpdatedAt    *time.Time         `json:"updated_at,omitempty"`
+}
+
+// ChangelogEntryCreate defines model for ChangelogEntryCreate.
+type ChangelogEntryCreate struct {
+	Body         *string             `json:"body,omitempty"`
+	Published    *bool               `json:"published,omitempty"`
+	StatusPageId *openapi_types.UUID `json:"status_page_id,omitempty"`
+	Title        string              `json:"title"`
+}
+
+// ChangelogEntryPatch defines model for ChangelogEntryPatch.
+type ChangelogEntryPatch struct {
+	Body      *string `json:"body,omitempty"`
+	Published *bool   `json:"published,omitempty"`
+	Title     *string `json:"title,omitempty"`
+}
+
 // CheckoutRequest defines model for CheckoutRequest.
 type CheckoutRequest struct {
 	BillingPeriod BillingPeriod `json:"billing_period"`
@@ -352,6 +382,9 @@ type ImportRequest struct {
 	Mode   *ImportMode   `json:"mode,omitempty"`
 	Region *ImportRegion `json:"region,omitempty"`
 	Source ImportSource  `json:"source"`
+
+	// StatusPageId Целевая страница. Если не указана — создаётся новая из subdomain.
+	StatusPageId *openapi_types.UUID `json:"status_page_id,omitempty"`
 
 	// Subdomain Идентификатор страницы в системе-источнике
 	Subdomain string `json:"subdomain"`
@@ -871,6 +904,12 @@ type GetBillingPaymentsParams struct {
 // PostBillingWebhookProviderJSONBody defines parameters for PostBillingWebhookProvider.
 type PostBillingWebhookProviderJSONBody map[string]interface{}
 
+// GetChangelogParams defines parameters for GetChangelog.
+type GetChangelogParams struct {
+	// StatusPageId Страница, чей changelog вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена.
+	StatusPageId *openapi_types.UUID `form:"status_page_id,omitempty" json:"status_page_id,omitempty"`
+}
+
 // GetComponentsParams defines parameters for GetComponents.
 type GetComponentsParams struct {
 	// StatusPageId Страница, чьи компоненты вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена.
@@ -933,6 +972,15 @@ type GetPagesSlugBadgeSvgParamsLang string
 
 // GetPagesSlugCalendarIcsParams defines parameters for GetPagesSlugCalendarIcs.
 type GetPagesSlugCalendarIcsParams struct {
+	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
+	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
+}
+
+// GetPagesSlugChangelogParams defines parameters for GetPagesSlugChangelog.
+type GetPagesSlugChangelogParams struct {
+	Page    *Page    `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *PerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+
 	// XPageAccess Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required).
 	XPageAccess *PageAccessHeader `json:"X-Page-Access,omitempty"`
 }
@@ -1045,6 +1093,12 @@ type PostBillingCheckoutJSONRequestBody = CheckoutRequest
 
 // PostBillingWebhookProviderJSONRequestBody defines body for PostBillingWebhookProvider for application/json ContentType.
 type PostBillingWebhookProviderJSONRequestBody PostBillingWebhookProviderJSONBody
+
+// PostChangelogJSONRequestBody defines body for PostChangelog for application/json ContentType.
+type PostChangelogJSONRequestBody = ChangelogEntryCreate
+
+// PatchChangelogIdJSONRequestBody defines body for PatchChangelogId for application/json ContentType.
+type PatchChangelogIdJSONRequestBody = ChangelogEntryPatch
 
 // PatchComponentGroupsIdJSONRequestBody defines body for PatchComponentGroupsId for application/json ContentType.
 type PatchComponentGroupsIdJSONRequestBody = ComponentGroupUpdate

@@ -27,9 +27,16 @@ ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 
 Контракт `/billing/*` уже был в openapi — НЕ менялся. Решения человека (2026-07-01): полный объём;
 реальные ЮKassa-ключи/боевые списания/чеки — `[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ]` (код против sandbox/стаба);
 цены — плейсхолдер конфигом (990 ₽/мес, годовая −20%, триал 14 дней). Добавлен `worker-billing`.
-**Следующий шаг:** Этап 7 — зрелость и миграция (uptime, changelog, наблюдаемость, бэкапы, импортёры),
-ЛИБО по приоритету человека. **Отложено:** inbound generic/pagerduty webhook'и (501, этап 5);
-боевая интеграция ЮKassa + free-trial-флоу с картой-на-файле (требует реального провайдера).
+**Этап 7 (Зрелость и миграция) — ПОЧТИ ЗАКРЫТ ПО КОДУ** (7.1/7.2/7.3/7.5/7.6/7.9 готовы, ждут коммита;
+детали в «Что в работе»). 7.1 uptime (домен+API+public-ssr полоса); 7.2 changelog (контракт расширен;
+admin+public-ssr «Релизы»); 7.3 **только `/metrics`** (Prometheus, решение человека); 7.5 каркас импорта
+(ImportJob/external_id_map/Importer/q.import/worker-import); 7.6 адаптер **StatusPal** (только он —
+решение человека); 7.9 UI импорта. Добавлен `worker-import`, зависимость `prometheus/client_golang`.
+**Отложено (решения человека):** 7.4 бэкапы + Grafana/вывод статуса/собственная статус-страница — прод;
+7.7 Instatus / 7.8 Статусмейт — позже; inbound generic/pagerduty webhook'и (501, этап 5); боевая ЮKassa.
+**Следующий шаг:** коммит человеком; затем прод-подготовка (стоп-маркеры ниже) ИЛИ 7.7/7.8/бэкапы по приоритету.
+**[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ ИМПОРТА]:** схема StatusPal API v2 (`internal/importer/statuspal.go`) — по
+докам, сверить на живом ключе (прод); 152-ФЗ — импортированные email `confirmed=false` (opt-in).
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ БИЛЛИНГА]:** реальные ключи ЮKassa, согласование рекуррентов с менеджером,
 боевые списания и фискальные чеки локально НЕ проверены; цены — плейсхолдер; оферта — черновик.
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** реальный выпуск TLS (4.3.2) и HTTPS-доступ по
@@ -113,6 +120,47 @@ ACME-сервис `cmd/tls-manager` (lego); 4.3.3 edge-прокси `cmd/edge`; 
 ---
 
 ## Что в работе
+
+**Этап 7 — Зрелость и миграция (написано, build+test(вкл. PG16)+lint+оба фронта зелёные, ждёт коммита):**
+- **Решения человека (2026-07-01):** импорт — только StatusPal (7.7/7.8 отложены); наблюдаемость —
+  только `/metrics` кодом (Grafana/вывод статуса/бэкапы — прод).
+- **7.1 uptime:** контракт уже был. Домен `uptime.go` `ComputeUptime` — under_maintenance ИСКЛЮЧЁН из
+  окна (Statuspage-семантика), downtime=partial/major_outage, degraded/operational=доступен; окно
+  клиппируется `component.created_at`; daily по суткам UTC; round2. store `StatusHistorySince`
+  (+запрос ListStatusHistorySince: ended_at IS NULL OR >= since). API `handleUptime` (public, гейт
+  приватных, приватный/чужой компонент→404, days 1..365). public-ssr: `fetchUptime` + полоса
+  `UptimeBar` (90 ячеек, цвет по %) на компонентах с show_uptime; i18n `uptimeOver`. Юнит+интеграция PG16.
+- **7.2 changelog:** **контракт расширен с санкции человека** (ChangelogEntry/Create/Patch +
+  `/changelog` CRUD + публичный `/pages/{slug}/changelog`). Миграция `00014_changelog.sql`
+  (published+published_at, индекс по published_at). Домен/store/API (`publishedAtFor` — set now при
+  публикации, null при снятии). Admin `entities/changelog`+`pages/changelog`+вкладка «Релизы»;
+  public-ssr вкладка «Релизы» (body — текст, экранируется React; `.changelog-body` pre-wrap). Флаг:
+  body без markdown-движка (безопаснее). Интеграция PG16 (черновик скрыт→публикация→snятие→изоляция→delete).
+- **7.3 метрики:** `internal/metrics` (promhttp дефолтный реестр + middleware
+  `healthpage_http_requests_total{method,route,code}` / `_request_duration_seconds{method,route}`,
+  route=шаблон chi через RouteContext.RoutePattern после ServeHTTP). `GET /metrics` + `metrics.Middleware`
+  в NewRouter. Dep `github.com/prometheus/client_golang`. Юнит-тест (счётчик+go_* коллекторы+шаблон route).
+- **7.5 каркас импорта:** миграция `00015_import.sql` (`import_jobs` — api_key НЕ хранит; `external_id_map`
+  unique(page,source,entity,external_id)). Домен `import.go` (ImportSource/Region/Mode/Status + IsValid;
+  ImportJob; ImportReport; **Imported\*** структуры — Source\* заняты HistorySource-константами!; Importer
+  интерфейс). Очередь `q.import` (topology durable, `Publisher.PublishImport` → default exchange).
+  Движок `internal/importer` (`Engine.Run`: компоненты 2 прохода (parent), группы по имени, инциденты
+  с хроникой, работы, подписчики **confirmed=false**; идемпотентность через external_id_map, skip/update;
+  БЕЗ notify — пишет через store напрямую). `cmd/worker-import` (consume q.import, ручной ack, job→
+  running→completed/failed+report). store `import.go` (CreateImportJob/UpdateImportJob/ExternalMapping/
+  SetExternalMapping). API `import.go`: **контракт расширен** — `ImportRequest.status_page_id` опционален
+  (цель или создать новую страницу из subdomain); POST /import (только statuspal иначе 422; api_key в
+  сообщении очереди, НЕ в БД; publisher nil→503) + GET /import/{job_id} (изоляция по аккаунту). Deps
+  `ImportPublisher` (интерфейс, nil→503; api main `setupImportPublisher` — своё соединение RabbitMQ).
+- **7.6 StatusPal:** `statuspal.go` (base us/eu, auth-заголовок, services/incidents/maintenances/
+  subscriptions→Imported*, маппинг статусов/impact). **Флаг [ВЕРНУТЬСЯ]:** схема JSON/пути API v2 по
+  докам — сверить на живом ключе (прод).
+- **7.9 UI импорта:** admin `entities/import`+`pages/import` (форма StatusPal + опрос статуса задачи
+  каждые 2с + отчёт JSON), ссылка «Импорт» в шапке, роут `/import`.
+- **Проверено:** юнит (uptime домен; metrics) + интеграционные на PG16 (uptime; changelog; движок импорта
+  с fake Importer — создание/дерево/инцидент+хроника/работа/подписчик confirmed=false/идемпотентный
+  повтор skip). Полный go test (вкл. PG16) + vet/gofmt/golangci-lint + admin `npm run build` + public-ssr
+  `next build` зелёные. Миграции 00013–00015 применены; up обратимы. Ждёт коммита.
 
 **Этап 6 — Биллинг и тарифы (написано, build+test(вкл. PG16)+lint+оба фронта зелёные, ждёт коммита):**
 - **Контракт НЕ менялся** — `/billing/*` (subscription/checkout/cancel/payments/webhook/{provider}) +

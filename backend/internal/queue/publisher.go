@@ -71,3 +71,8 @@ func (p *Publisher) PublishNotificationDelayed(
 func (p *Publisher) PublishWebhookOut(ctx context.Context, body []byte) error {
 	return p.publish(ctx, ExchangeWebhooksOut, webhookOutKey, body, nil)
 }
+
+// PublishImport ставит задачу импорта в q.import (default exchange, routing key = имя очереди).
+func (p *Publisher) PublishImport(ctx context.Context, body []byte) error {
+	return p.publish(ctx, "", QueueImport, body, nil)
+}

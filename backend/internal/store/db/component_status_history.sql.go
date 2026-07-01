@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -29,6 +30,48 @@ ORDER BY started_at
 
 func (q *Queries) ListStatusHistory(ctx context.Context, componentID uuid.UUID) ([]ComponentStatusHistory, error) {
 	rows, err := q.db.Query(ctx, listStatusHistory, componentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ComponentStatusHistory{}
+	for rows.Next() {
+		var i ComponentStatusHistory
+		if err := rows.Scan(
+			&i.ID,
+			&i.ComponentID,
+			&i.Status,
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.Source,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStatusHistorySince = `-- name: ListStatusHistorySince :many
+SELECT id, component_id, status, started_at, ended_at, source, created_at, updated_at FROM component_status_history
+WHERE component_id = $1 AND (ended_at IS NULL OR ended_at >= $2)
+ORDER BY started_at
+`
+
+type ListStatusHistorySinceParams struct {
+	ComponentID uuid.UUID
+	EndedAt     *time.Time
+}
+
+// Периоды, пересекающие окно [since, now]: открытые (ended_at IS NULL) и завершившиеся не раньше
+// since. Захватывает и период, активный на момент since (started_at < since, ended_at >= since).
+func (q *Queries) ListStatusHistorySince(ctx context.Context, arg ListStatusHistorySinceParams) ([]ComponentStatusHistory, error) {
+	rows, err := q.db.Query(ctx, listStatusHistorySince, arg.ComponentID, arg.EndedAt)
 	if err != nil {
 		return nil, err
 	}

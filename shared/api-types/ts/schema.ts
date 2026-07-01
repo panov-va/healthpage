@@ -633,6 +633,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/pages/{slug}/changelog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Лента релизов/анонсов (только опубликованные) */
+        get: {
+            parameters: {
+                query?: {
+                    page?: components["parameters"]["Page"];
+                    per_page?: components["parameters"]["PerPage"];
+                };
+                header?: {
+                    /** @description Токен доступа к приватной странице (получен из POST /pages/{slug}/access). Для публичных страниц игнорируется. Для приватных без валидного токена публичные read-эндпоинты возвращают 401 (password_required). */
+                    "X-Page-Access"?: components["parameters"]["PageAccessHeader"];
+                };
+                path: {
+                    /** @description Идентификатор страницы (поддомен) */
+                    slug: components["parameters"]["Slug"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChangelogEntry"][];
+                    };
+                };
+                401: components["responses"]["PasswordRequired"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pages/{slug}/rss": {
         parameters: {
             query?: never;
@@ -1713,6 +1760,163 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["IncidentTemplate"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        trace?: never;
+    };
+    "/changelog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Список записей changelog (админ, включая черновики) */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Страница, чей changelog вернуть. Обязателен при операторском JWT; при ApiToken выводится из токена. */
+                    status_page_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChangelogEntry"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        /** Создать запись changelog */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChangelogEntryCreate"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChangelogEntry"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                422: components["responses"]["ValidationError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/changelog/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Получить запись changelog */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChangelogEntry"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Удалить запись changelog */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Изменить запись changelog (включая публикацию) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: components["parameters"]["IdPath"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChangelogEntryPatch"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ChangelogEntry"];
                     };
                 };
                 401: components["responses"]["Unauthorized"];
@@ -3313,6 +3517,36 @@ export interface components {
             default_impact?: components["schemas"]["IncidentImpact"];
             default_components?: components["schemas"]["IncidentComponent"][];
         };
+        ChangelogEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            status_page_id: string;
+            title: string;
+            /** @description Текст записи (plain text; на публичной странице выводится экранированным) */
+            body?: string;
+            /** @description Опубликована ли запись (черновики скрыты публично) */
+            published: boolean;
+            /** Format: date-time */
+            published_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        ChangelogEntryCreate: {
+            /** Format: uuid */
+            status_page_id?: string;
+            title: string;
+            body?: string;
+            /** @default false */
+            published: boolean;
+        };
+        ChangelogEntryPatch: {
+            title?: string;
+            body?: string;
+            published?: boolean;
+        };
         MaintenanceUpdate: {
             /** Format: uuid */
             id: string;
@@ -3565,6 +3799,11 @@ export interface components {
         };
         ImportRequest: {
             source: components["schemas"]["ImportSource"];
+            /**
+             * Format: uuid
+             * @description Целевая страница. Если не указана — создаётся новая из subdomain.
+             */
+            status_page_id?: string;
             region?: components["schemas"]["ImportRegion"];
             /** @description API-ключ источника; не хранится дольше задачи */
             api_key: string;

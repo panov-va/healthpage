@@ -11,10 +11,11 @@ import { PageShell } from "./PageShell";
 import { StatusTabs } from "./StatusTabs";
 import {
   fetchPageSummary,
+  fetchUptime,
   PageAccessRequiredError,
   PageNotFoundError,
 } from "../../../lib/api";
-import type { ApiComponent, ComponentStatus } from "../../../lib/api";
+import type { ApiComponent, ApiUptimeReport, ComponentStatus } from "../../../lib/api";
 import { impactColor, maintenanceStatusColor } from "../../../lib/badge";
 import { buildStatusMetadata } from "../../../lib/meta";
 import { is12h, parseTheme } from "../../../lib/theme";
@@ -53,15 +54,51 @@ function StatusBadge({ status, label }: { status: ComponentStatus; label: string
   );
 }
 
+// UptimeBar — полоса доступности за период (этап 7.1): по одной ячейке на день, цвет по проценту.
+function UptimeBar({ report, locale }: { report: ApiUptimeReport; locale: Locale }) {
+  const t = dict(locale);
+  const daily = report.daily ?? [];
+  return (
+    <div className="uptime">
+      <div className="uptime-head">
+        <span className="uptime-pct">{report.uptime_percent}%</span>
+        <span className="uptime-label">
+          {t.uptimeOver.replace("{days}", String(report.days))}
+        </span>
+      </div>
+      {daily.length > 0 ? (
+        <div className="uptime-bar" role="img" aria-label={`${report.uptime_percent}%`}>
+          {daily.map((d) => (
+            <span
+              key={d.date}
+              className={`uptime-cell ${uptimeClass(d.uptime_percent)}`}
+              title={`${d.date}: ${d.uptime_percent}%`}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function uptimeClass(pct: number): string {
+  if (pct >= 99.9) return "up-ok";
+  if (pct >= 95) return "up-warn";
+  return "up-bad";
+}
+
 function ComponentRow({
   node,
   locale,
+  uptime,
 }: {
   node: ComponentNode;
   locale: Locale;
+  uptime: Map<string, ApiUptimeReport>;
 }) {
   const t = dict(locale);
   const c = node.component;
+  const report = c.show_uptime ? uptime.get(c.id) : undefined;
   return (
     <li>
       <div className="component">
@@ -71,10 +108,11 @@ function ComponentRow({
         </span>
         <StatusBadge status={c.current_status} label={t.status[c.current_status]} />
       </div>
+      {report ? <UptimeBar report={report} locale={locale} /> : null}
       {node.children.length > 0 ? (
         <ul className="subtree">
           {node.children.map((child) => (
-            <ComponentRow key={child.component.id} node={child} locale={locale} />
+            <ComponentRow key={child.component.id} node={child} locale={locale} uptime={uptime} />
           ))}
         </ul>
       ) : null}
@@ -85,15 +123,17 @@ function ComponentRow({
 function ComponentList({
   components,
   locale,
+  uptime,
 }: {
   components: ApiComponent[];
   locale: Locale;
+  uptime: Map<string, ApiUptimeReport>;
 }) {
   const roots = buildTree(components);
   return (
     <ul className="components">
       {roots.map((node) => (
-        <ComponentRow key={node.component.id} node={node} locale={locale} />
+        <ComponentRow key={node.component.id} node={node} locale={locale} uptime={uptime} />
       ))}
     </ul>
   );
@@ -131,6 +171,23 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
   const slug = params.slug;
   const tz = summary.page.timezone;
   const hour12 = is12h(parseTheme(summary.page.theme));
+
+  // Uptime (этап 7.1): тянем 90-дневную доступность для компонентов с show_uptime.
+  // Ошибки отдельных запросов не рушат страницу (allSettled).
+  const allComponents = [
+    ...summary.groups.flatMap((g) => g.components),
+    ...summary.ungrouped_components,
+  ];
+  const uptimeMap = new Map<string, ApiUptimeReport>();
+  const uptimeTargets = allComponents.filter((c) => c.show_uptime);
+  if (uptimeTargets.length > 0) {
+    const reports = await Promise.allSettled(
+      uptimeTargets.map((c) => fetchUptime(slug, c.id, 90)),
+    );
+    for (const r of reports) {
+      if (r.status === "fulfilled") uptimeMap.set(r.value.component_id, r.value);
+    }
+  }
 
   return (
     <PageShell page={summary.page} locale={locale}>
@@ -213,7 +270,7 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
                   label={t.status[g.aggregated_status]}
                 />
               </div>
-              <ComponentList components={g.components} locale={locale} />
+              <ComponentList components={g.components} locale={locale} uptime={uptimeMap} />
             </section>
           ))}
 
@@ -222,6 +279,7 @@ export default async function StatusPage({ params, searchParams }: PageProps) {
               <ComponentList
                 components={summary.ungrouped_components}
                 locale={locale}
+                uptime={uptimeMap}
               />
             </section>
           ) : null}

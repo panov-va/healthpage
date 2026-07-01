@@ -11,3 +11,10 @@ RETURNING *;
 SELECT * FROM component_status_history
 WHERE component_id = $1
 ORDER BY started_at;
+
+-- name: ListStatusHistorySince :many
+-- Периоды, пересекающие окно [since, now]: открытые (ended_at IS NULL) и завершившиеся не раньше
+-- since. Захватывает и период, активный на момент since (started_at < since, ended_at >= since).
+SELECT * FROM component_status_history
+WHERE component_id = $1 AND (ended_at IS NULL OR ended_at >= $2)
+ORDER BY started_at;

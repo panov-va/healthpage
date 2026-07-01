@@ -13,6 +13,7 @@ import (
 	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/billing"
 	"github.com/healthpage/backend/internal/domain"
+	"github.com/healthpage/backend/internal/metrics"
 	"github.com/healthpage/backend/internal/notify"
 	"github.com/healthpage/backend/internal/slack"
 	"github.com/healthpage/backend/internal/store"
@@ -25,15 +26,16 @@ const (
 
 // Deps — зависимости HTTP-слоя.
 type Deps struct {
-	Auth       *auth.Service
-	Store      *store.Store
-	Notifier   *notify.Engine   // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
-	SubSecret  string           // секрет HMAC-токенов отписки (должен совпадать с worker-email)
-	BaseURL    string           // базовый URL для ссылок в фидах/письмах
-	SlackOAuth *slack.OAuth     // OAuth-клиент Slack; nil — подписка Slack выключена
-	Billing    *billing.Service // сервис биллинга (этап 6); nil — эндпоинты /billing/* отвечают 503
-	Prod       bool             // влияет на флаг Secure у refresh-cookie
-	RefreshTTL time.Duration    // срок жизни refresh-cookie
+	Auth            *auth.Service
+	Store           *store.Store
+	Notifier        *notify.Engine   // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
+	SubSecret       string           // секрет HMAC-токенов отписки (должен совпадать с worker-email)
+	BaseURL         string           // базовый URL для ссылок в фидах/письмах
+	SlackOAuth      *slack.OAuth     // OAuth-клиент Slack; nil — подписка Slack выключена
+	Billing         *billing.Service // сервис биллинга (этап 6); nil — эндпоинты /billing/* отвечают 503
+	ImportPublisher ImportPublisher  // публикатор задач импорта (этап 7.5); nil — /import отвечает 503
+	Prod            bool             // влияет на флаг Secure у refresh-cookie
+	RefreshTTL      time.Duration    // срок жизни refresh-cookie
 
 	// Кастомные домены (этап 4.3): целевой хост для CNAME и резолвер для верификации.
 	// CNAMEResolver nil → используется net.DefaultResolver.LookupCNAME (тесты инъектируют фейк).
@@ -42,22 +44,23 @@ type Deps struct {
 }
 
 type server struct {
-	auth          *auth.Service
-	store         *store.Store
-	notifier      *notify.Engine
-	subSecret     string
-	baseURL       string
-	slackOAuth    *slack.OAuth
-	billing       *billing.Service
-	prod          bool
-	refreshTTL    time.Duration
-	cnameTarget   string
-	cnameResolver func(ctx context.Context, host string) (string, error)
+	auth            *auth.Service
+	store           *store.Store
+	notifier        *notify.Engine
+	subSecret       string
+	baseURL         string
+	slackOAuth      *slack.OAuth
+	billing         *billing.Service
+	importPublisher ImportPublisher
+	prod            bool
+	refreshTTL      time.Duration
+	cnameTarget     string
+	cnameResolver   func(ctx context.Context, host string) (string, error)
 }
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, billing: d.Billing, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, billing: d.Billing, importPublisher: d.ImportPublisher, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver}
 	if s.cnameResolver == nil {
 		s.cnameResolver = net.DefaultResolver.LookupCNAME
 	}
@@ -65,8 +68,10 @@ func NewRouter(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recoverer)
+	r.Use(metrics.Middleware) // учёт HTTP-метрик (этап 7.3)
 
 	r.Get("/healthz", healthz)
+	r.Handle("/metrics", metrics.Handler()) // Prometheus-скрейпинг (этап 7.3)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
@@ -87,6 +92,8 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/pages/{page}/incidents", s.handlePublicIncidents)
 		r.Get("/pages/{page}/incidents/{id}", s.handlePublicIncidentDetail)
 		r.Get("/pages/{page}/maintenances", s.handlePublicMaintenances)
+		r.Get("/pages/{page}/uptime", s.handleUptime)
+		r.Get("/pages/{page}/changelog", s.handlePublicChangelog)
 
 		// Подписки (этап 3.5): публичные, без авторизации.
 		r.Post("/pages/{page}/subscribe", s.handleSubscribe)
@@ -150,6 +157,12 @@ func NewRouter(d Deps) http.Handler {
 			r.Patch("/incident-templates/{id}", s.handlePatchIncidentTemplate)
 			r.Delete("/incident-templates/{id}", s.handleDeleteIncidentTemplate)
 
+			r.Get("/changelog", s.handleListChangelog)
+			r.Post("/changelog", s.handleCreateChangelog)
+			r.Get("/changelog/{id}", s.handleGetChangelog)
+			r.Patch("/changelog/{id}", s.handlePatchChangelog)
+			r.Delete("/changelog/{id}", s.handleDeleteChangelog)
+
 			r.Get("/maintenances", s.handleListMaintenances)
 			r.Post("/maintenances", s.handleCreateMaintenance)
 			r.Get("/maintenances/{id}", s.handleGetMaintenance)
@@ -171,6 +184,10 @@ func NewRouter(d Deps) http.Handler {
 			r.Post("/billing/checkout", s.handleCheckout)
 			r.Post("/billing/cancel", s.handleCancelSubscription)
 			r.Get("/billing/payments", s.handleListPayments)
+
+			// Импорт из внешних сервисов (этап 7.5). Только оператор (account-level).
+			r.Post("/import", s.handleStartImport)
+			r.Get("/import/{job_id}", s.handleGetImportJob)
 
 			// Webhook-интеграции (этап 5.3). Управление — только оператор (минтит секрет).
 			r.Get("/webhook-integrations", s.handleListWebhookIntegrations)

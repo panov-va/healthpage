@@ -21,6 +21,9 @@ const (
 
 	// QueueWebhookOut — единственная очередь исходящих webhook'ов.
 	QueueWebhookOut = "q.webhook.out"
+	// QueueImport — очередь задач импорта (этап 7.5), потребляется worker-import.
+	// Публикация — через default exchange по routing key = имя очереди.
+	QueueImport = "q.import"
 	// webhookOutKey — ключ маршрутизации для direct-exchange webhooks.out.
 	webhookOutKey = "webhook.out"
 )
@@ -93,6 +96,12 @@ func DeclareTopology(ch *amqp.Channel) error {
 	// ключом notify.webhook.* (как у канальных очередей), поэтому привязываем q.webhook.out и к нему.
 	if err := ch.QueueBind(QueueWebhookOut, notifyBindingKey("webhook"), ExchangeDelayed, false, nil); err != nil {
 		return fmt.Errorf("queue: bind %s→%s: %w", QueueWebhookOut, ExchangeDelayed, err)
+	}
+
+	// Очередь импорта (этап 7.5): durable, без DLX (провал задачи фиксируется в import_jobs.status).
+	// Публикация через default exchange по routing key = имя очереди.
+	if _, err := ch.QueueDeclare(QueueImport, true, false, false, false, nil); err != nil {
+		return fmt.Errorf("queue: declare %s: %w", QueueImport, err)
 	}
 
 	return nil

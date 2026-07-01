@@ -265,6 +265,17 @@ type ApiToken struct {
 	UpdatedAt    time.Time
 }
 
+type ChangelogEntry struct {
+	ID           uuid.UUID
+	StatusPageID uuid.UUID
+	Title        string
+	Body         string
+	Published    bool
+	PublishedAt  *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type Component struct {
 	ID            uuid.UUID
 	StatusPageID  uuid.UUID
@@ -310,6 +321,32 @@ type DomainCertificate struct {
 	IssuedAt  time.Time
 	ExpiresAt time.Time
 	UpdatedAt time.Time
+}
+
+type ExternalIDMap struct {
+	ID           uuid.UUID
+	StatusPageID uuid.UUID
+	Source       string
+	EntityType   string
+	ExternalID   string
+	InternalID   uuid.UUID
+	CreatedAt    time.Time
+}
+
+type ImportJob struct {
+	ID           uuid.UUID
+	StatusPageID uuid.UUID
+	AccountID    uuid.UUID
+	Source       string
+	Region       *string
+	Subdomain    string
+	Mode         string
+	Status       string
+	Report       []byte
+	Error        *string
+	CreatedAt    time.Time
+	FinishedAt   *time.Time
+	UpdatedAt    time.Time
 }
 
 type Incident struct {

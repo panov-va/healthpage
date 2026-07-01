@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { SessionProvider, useSession } from "@/entities/session";
 import { BillingPage } from "@/pages/billing";
+import { ChangelogPage } from "@/pages/changelog";
+import { ImportPage } from "@/pages/import";
 import { IncidentDetailPage, IncidentsListPage } from "@/pages/incidents";
 import { LoginPage } from "@/pages/login";
 import { MaintenanceDetailPage, MaintenancesListPage } from "@/pages/maintenances";
@@ -37,6 +39,7 @@ export function App() {
           >
             <Route path="/" element={<PagesListPage />} />
             <Route path="/billing" element={<BillingPage />} />
+            <Route path="/import" element={<ImportPage />} />
             <Route path="/pages/:id" element={<PageDetailPage />} />
             <Route path="/pages/:id/incidents" element={<IncidentsListPage />} />
             <Route
@@ -50,6 +53,7 @@ export function App() {
             />
             <Route path="/pages/:id/templates" element={<TemplatesPage />} />
             <Route path="/pages/:id/subscribers" element={<SubscribersPage />} />
+            <Route path="/pages/:id/changelog" element={<ChangelogPage />} />
             <Route path="/pages/:id/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

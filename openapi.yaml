@@ -38,6 +38,8 @@ tags:
     description: Входящие webhook'и интеграций
   - name: Billing
     description: Подписки и платежи (Premium)
+  - name: Changelog
+    description: Страница релизов / лента анонсов продукта
   - name: Import
     description: Миграция данных из внешних сервисов (StatusPal и др.)
 
@@ -332,6 +334,27 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UptimeReport' }
+        '401': { $ref: '#/components/responses/PasswordRequired' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /pages/{slug}/changelog:
+    get:
+      tags: [Public]
+      summary: Лента релизов/анонсов (только опубликованные)
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/PageAccessHeader'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChangelogEntry' }
         '401': { $ref: '#/components/responses/PasswordRequired' }
         '404': { $ref: '#/components/responses/NotFound' }
 
@@ -848,6 +871,88 @@ paths:
     delete:
       tags: [Incidents]
       summary: Удалить шаблон инцидента
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204': { description: No Content }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── CHANGELOG ───────────────────────────────
+  /changelog:
+    get:
+      tags: [Changelog]
+      summary: Список записей changelog (админ, включая черновики)
+      parameters:
+        - name: status_page_id
+          in: query
+          required: false
+          description: >
+            Страница, чей changelog вернуть. Обязателен при операторском JWT; при ApiToken
+            выводится из токена.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChangelogEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Changelog]
+      summary: Создать запись changelog
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangelogEntryCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChangelogEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /changelog/{id}:
+    get:
+      tags: [Changelog]
+      summary: Получить запись changelog
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChangelogEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Changelog]
+      summary: Изменить запись changelog (включая публикацию)
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangelogEntryPatch' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChangelogEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Changelog]
+      summary: Удалить запись changelog
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:
@@ -1929,6 +2034,37 @@ components:
           type: array
           items: { $ref: '#/components/schemas/IncidentComponent' }
 
+    # ── changelog (страница релизов) ──
+    ChangelogEntry:
+      type: object
+      required: [id, status_page_id, title, published, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status_page_id: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string, description: "Текст записи (plain text; на публичной странице выводится экранированным)" }
+        published: { type: boolean, description: "Опубликована ли запись (черновики скрыты публично)" }
+        published_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ChangelogEntryCreate:
+      type: object
+      required: [title]
+      properties:
+        # Обязателен при операторском JWT; при ApiToken выводится из токена и должен совпадать, если передан.
+        status_page_id: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string }
+        published: { type: boolean, default: false }
+
+    ChangelogEntryPatch:
+      type: object
+      properties:
+        title: { type: string }
+        body: { type: string }
+        published: { type: boolean }
+
     # ── плановые работы ──
     MaintenanceUpdate:
       type: object
@@ -2246,6 +2382,10 @@ components:
       required: [source, api_key, subdomain]
       properties:
         source: { $ref: '#/components/schemas/ImportSource' }
+        status_page_id:
+          type: string
+          format: uuid
+          description: "Целевая страница. Если не указана — создаётся новая из subdomain."
         region:
           $ref: '#/components/schemas/ImportRegion'
         api_key:

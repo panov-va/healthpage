@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -188,6 +189,22 @@ func (s *Store) ListStatusHistory(ctx context.Context, componentID uuid.UUID) ([
 	rows, err := s.q.ListStatusHistory(ctx, componentID)
 	if err != nil {
 		return nil, fmt.Errorf("store: list history: %w", err)
+	}
+	out := make([]domain.ComponentStatusHistory, len(rows))
+	for i, h := range rows {
+		out[i] = mapStatusHistory(h)
+	}
+	return out, nil
+}
+
+// StatusHistorySince возвращает периоды статусов, пересекающие окно [since, now] (для uptime).
+func (s *Store) StatusHistorySince(ctx context.Context, componentID uuid.UUID, since time.Time) ([]domain.ComponentStatusHistory, error) {
+	rows, err := s.q.ListStatusHistorySince(ctx, db.ListStatusHistorySinceParams{
+		ComponentID: componentID,
+		EndedAt:     &since,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("store: list history since: %w", err)
 	}
 	out := make([]domain.ComponentStatusHistory, len(rows))
 	for i, h := range rows {

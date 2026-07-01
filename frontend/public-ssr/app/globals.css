@@ -547,3 +547,48 @@ body {
 .feat-no {
   color: var(--muted);
 }
+
+/* Uptime-полоса (этап 7.1) */
+.uptime {
+  margin-top: 6px;
+}
+.uptime-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+.uptime-pct {
+  font-weight: 700;
+}
+.uptime-label {
+  color: var(--muted);
+}
+.uptime-bar {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  height: 24px;
+}
+.uptime-cell {
+  flex: 1 1 0;
+  min-width: 2px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+.uptime-cell.up-ok {
+  background: #16a34a;
+}
+.uptime-cell.up-warn {
+  background: #d97706;
+}
+.uptime-cell.up-bad {
+  background: #dc2626;
+}
+
+/* Changelog body (этап 7.2) */
+.changelog-body {
+  white-space: pre-wrap;
+  padding: 8px 12px;
+  margin: 0;
+}

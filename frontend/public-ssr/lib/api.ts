@@ -190,6 +190,51 @@ export async function fetchComponents(slug: string): Promise<ApiComponent[]> {
   );
 }
 
+// ApiChangelogEntry — запись ленты релизов (openapi ChangelogEntry, этап 7.2).
+export interface ApiChangelogEntry {
+  id: string;
+  title: string;
+  body: string;
+  published: boolean;
+  published_at: string | null;
+  created_at: string;
+}
+
+// fetchChangelog — публичная лента релизов (только опубликованные).
+export async function fetchChangelog(
+  slug: string,
+  page = 1,
+  perPage = 50,
+): Promise<ApiChangelogEntry[]> {
+  const q = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+  return getJSON<ApiChangelogEntry[]>(
+    `/pages/${encodeURIComponent(slug)}/changelog?${q.toString()}`,
+    pageAccessHeaders(slug),
+  );
+}
+
+// ApiUptimeReport — отчёт доступности компонента (openapi UptimeReport, этап 7.1).
+export interface ApiUptimeReport {
+  component_id: string;
+  days: number;
+  uptime_percent: number;
+  daily?: { date: string; uptime_percent: number }[];
+}
+
+// fetchUptime тянет доступность компонента за период (по умолчанию 90 дней). Ошибки не
+// критичны для рендера страницы — вызывающий может проигнорировать (см. StatusPage).
+export async function fetchUptime(
+  slug: string,
+  componentId: string,
+  days = 90,
+): Promise<ApiUptimeReport> {
+  const q = new URLSearchParams({ component_id: componentId, days: String(days) });
+  return getJSON<ApiUptimeReport>(
+    `/pages/${encodeURIComponent(slug)}/uptime?${q.toString()}`,
+    pageAccessHeaders(slug),
+  );
+}
+
 export async function fetchIncidents(
   slug: string,
   page: number,

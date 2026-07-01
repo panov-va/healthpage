@@ -63,19 +63,28 @@ func main() {
 	// Биллинг (этап 6): провайдер ЮKassa при наличии ключей, иначе stub (dev).
 	billingSvc := setupBilling(cfg, st)
 
+	// Публикатор задач импорта (этап 7.5): своё соединение RabbitMQ. Без RabbitMQ /import → 503.
+	importPub, closeImport := setupImportPublisher(cfg.RabbitMQURL)
+	defer closeImport()
+	var importPublisher api.ImportPublisher
+	if importPub != nil {
+		importPublisher = importPub
+	}
+
 	srv := &http.Server{
 		Addr: ":" + cfg.HTTPPort,
 		Handler: api.NewRouter(api.Deps{
-			Auth:        authSvc,
-			Store:       st,
-			Notifier:    notifier,
-			SubSecret:   cfg.SubscriptionSecret,
-			BaseURL:     cfg.BaseURL,
-			SlackOAuth:  slackOAuth,
-			Billing:     billingSvc,
-			Prod:        cfg.IsProd(),
-			RefreshTTL:  cfg.RefreshTTL,
-			CNAMETarget: cfg.CNAMETarget,
+			Auth:            authSvc,
+			Store:           st,
+			Notifier:        notifier,
+			SubSecret:       cfg.SubscriptionSecret,
+			BaseURL:         cfg.BaseURL,
+			SlackOAuth:      slackOAuth,
+			Billing:         billingSvc,
+			ImportPublisher: importPublisher,
+			Prod:            cfg.IsProd(),
+			RefreshTTL:      cfg.RefreshTTL,
+			CNAMETarget:     cfg.CNAMETarget,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -154,6 +163,29 @@ func setupBilling(cfg config.Config, st *store.Store) *billing.Service {
 		MaxDunning:    cfg.BillingMaxDunning,
 		RetryInterval: cfg.BillingRetryInterval,
 	})
+}
+
+// setupImportPublisher открывает соединение RabbitMQ для публикации задач импорта (этап 7.5).
+// Без RABBITMQ_URL/при ошибке возвращает nil — эндпоинт /import отвечает 503.
+func setupImportPublisher(rabbitURL string) (*queue.Publisher, func()) {
+	if rabbitURL == "" {
+		return nil, func() {}
+	}
+	conn, err := queue.Dial(rabbitURL)
+	if err != nil {
+		log.Printf("import: не удалось подключиться к RabbitMQ (%v) — импорт отключён", err)
+		return nil, func() {}
+	}
+	pub, err := queue.NewPublisher(conn)
+	if err != nil {
+		log.Printf("import: publisher (%v) — импорт отключён", err)
+		_ = conn.Close()
+		return nil, func() {}
+	}
+	return pub, func() {
+		_ = pub.Close()
+		_ = conn.Close()
+	}
 }
 
 // runHealthCheck дёргает локальный /healthz и завершает процесс с кодом 0/1.

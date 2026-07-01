@@ -60,6 +60,16 @@ export type SubscriberCreate = Schemas["SubscriberCreate"];
 export type SubscriberChannel = Schemas["SubscriberChannel"];
 export type SubscriberScope = Schemas["SubscriberScope"];
 
+// ── импорт (этап 7.5) ──
+export type ImportRequest = Schemas["ImportRequest"];
+export type ImportJob = Schemas["ImportJob"];
+export type ImportSource = Schemas["ImportSource"];
+
+// ── changelog (этап 7.2) ──
+export type ChangelogEntry = Schemas["ChangelogEntry"];
+export type ChangelogEntryCreate = Schemas["ChangelogEntryCreate"];
+export type ChangelogEntryPatch = Schemas["ChangelogEntryPatch"];
+
 // ── биллинг (этап 6) ──
 export type Subscription = Schemas["Subscription"];
 export type Payment = Schemas["Payment"];

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { dict, withLang } from "../../../lib/i18n";
 import type { Locale } from "../../../lib/i18n";
 
-export type StatusTab = "overview" | "incidents" | "maintenances";
+export type StatusTab = "overview" | "incidents" | "maintenances" | "changelog";
 
 export function StatusTabs({
   slug,
@@ -23,6 +23,7 @@ export function StatusTabs({
     { key: "overview", href: base, label: t.tabs.overview },
     { key: "incidents", href: `${base}/incidents`, label: t.tabs.incidents },
     { key: "maintenances", href: `${base}/maintenances`, label: t.tabs.maintenances },
+    { key: "changelog", href: `${base}/changelog`, label: t.tabs.changelog },
   ];
   return (
     <nav className="tabs">

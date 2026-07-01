@@ -167,6 +167,21 @@ services:
       postgres:
         condition: service_healthy
 
+  # Асинхронный импорт из внешних сервисов (этап 7.5): потребляет q.import, MVP-источник StatusPal.
+  worker-import:
+    build:
+      context: ./backend
+    entrypoint: ["/app/worker-import"]
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${DATABASE_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   # ACME-выпуск/продление TLS кастомных доменов (этап 4.3.2). Требует публичной доступности
   # доменов на :80 (через edge) — в dev обычно не запускается; для прод задать ACME_EMAIL.
   tls-manager:

@@ -59,6 +59,10 @@ func TestManagementIntegration(t *testing.T) {
 		doJSON(t, srv.URL+"/api/v1/auth/register", "", map[string]string{"email": email, "password": "supersecret"}, http.StatusCreated, &out)
 		uid, _ := uuid.Parse(out.User.ID)
 		cleanupUsers = append(cleanupUsers, uid)
+		// Custom SMTP и white-label — premium-фичи (этап 6.7); поднимаем тариф аккаунта.
+		if _, err := raw.Exec(ctx, "UPDATE accounts SET billing_plan='premium' WHERE owner_user_id=$1", uid); err != nil {
+			t.Fatalf("upgrade premium: %v", err)
+		}
 		return out.AccessToken, uid
 	}
 

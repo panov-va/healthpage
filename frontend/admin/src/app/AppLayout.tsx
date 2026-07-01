@@ -13,6 +13,9 @@ export function AppLayout() {
         </Link>
         <div className="hp-topbar__user">
           {user && <span>{user.email}</span>}
+          <Link to="/billing" style={{ color: "inherit" }}>
+            Тариф
+          </Link>
           <LogoutButton />
         </div>
       </header>

@@ -64,6 +64,12 @@ services:
       SUBSCRIPTION_SECRET: ${SUBSCRIPTION_SECRET:-}
       SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
       SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+      PREMIUM_MONTHLY_MINOR: ${PREMIUM_MONTHLY_MINOR:-}
+      PREMIUM_YEARLY_DISCOUNT_PCT: ${PREMIUM_YEARLY_DISCOUNT_PCT:-}
+      BILLING_CURRENCY: ${BILLING_CURRENCY:-}
+      TRIAL_DAYS: ${TRIAL_DAYS:-}
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
     ports:
       - "${HTTP_PORT:-8080}:8080"
     depends_on:
@@ -136,6 +142,29 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+
+  # Рекуррентные списания и dunning (этап 6.4): периодический цикл по premium-подпискам с
+  # истёкшим периодом. Без ключей ЮKassa использует stub-провайдер (dev, без реальных денег).
+  worker-billing:
+    build:
+      context: ./backend
+    entrypoint: ["/app/worker-billing"]
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      DATABASE_URL: ${DATABASE_URL}
+      PREMIUM_MONTHLY_MINOR: ${PREMIUM_MONTHLY_MINOR:-}
+      PREMIUM_YEARLY_DISCOUNT_PCT: ${PREMIUM_YEARLY_DISCOUNT_PCT:-}
+      BILLING_CURRENCY: ${BILLING_CURRENCY:-}
+      TRIAL_DAYS: ${TRIAL_DAYS:-}
+      BILLING_SCAN_INTERVAL: ${BILLING_SCAN_INTERVAL:-}
+      BILLING_MAX_DUNNING: ${BILLING_MAX_DUNNING:-}
+      BILLING_RETRY_INTERVAL: ${BILLING_RETRY_INTERVAL:-}
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-}
+    depends_on:
+      postgres:
         condition: service_healthy
 
   # ACME-выпуск/продление TLS кастомных доменов (этап 4.3.2). Требует публичной доступности

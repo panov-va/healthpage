@@ -60,6 +60,10 @@ func TestPrivatePageAccessIntegration(t *testing.T) {
 	uid, _ := uuid.Parse(reg.User.ID)
 	cleanup = append(cleanup, uid)
 	token := reg.AccessToken
+	// Приватные страницы — premium-фича (этап 6.7); поднимаем тариф аккаунта.
+	if _, err := raw.Exec(ctx, "UPDATE accounts SET billing_plan='premium' WHERE owner_user_id=$1", uid); err != nil {
+		t.Fatalf("upgrade premium: %v", err)
+	}
 
 	slug := "priv-" + uuid.NewString()[:8]
 	var page statusPageResponse

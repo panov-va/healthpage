@@ -66,6 +66,10 @@ func TestCustomDomainIntegration(t *testing.T) {
 			map[string]string{"email": email, "password": "supersecret"}, http.StatusCreated, &out)
 		uid, _ := uuid.Parse(out.User.ID)
 		cleanup = append(cleanup, uid)
+		// Собственный домен — premium-фича (этап 6.7); поднимаем тариф аккаунта.
+		if _, err := raw.Exec(ctx, "UPDATE accounts SET billing_plan='premium' WHERE owner_user_id=$1", uid); err != nil {
+			t.Fatalf("upgrade premium: %v", err)
+		}
 		return out.AccessToken, uid
 	}
 

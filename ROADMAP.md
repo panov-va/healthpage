@@ -511,20 +511,57 @@ white-label убирает брендинг; виджет встраиваетс
 > Рамки MVP: самозанятость + ЮKassa, приём от физлиц, фискализация через «Мой налог».
 > Не реализовывать B2B-приём, ОФД, обвязку «на вырост».
 
-- [ ] **6.1** Миграции: `Subscription`, `Payment`. Enum'ы биллинга.
-- [ ] **6.2** Интерфейс `PaymentProvider` (Go) + реализация под ЮKassa.
-- [ ] **6.3** Checkout Premium (`POST /billing/checkout`), сохранение платёжного токена.
-- [ ] **6.4** `worker-billing`: рекуррентные списания по токену; dunning при неуспехе; откат на Free.
-- [ ] **6.5** Webhook ЮKassa (`POST /billing/webhook/{provider}`): проверка подписи,
+> **Контракт `/billing/*` уже был описан в openapi (эндпоинты + схемы Subscription/Payment/
+> CheckoutRequest/CheckoutResponse + enum'ы) — Этап 6 чисто реализационный, контракт НЕ менялся.**
+> **Решения человека (2026-07-01):** объём — полный 6.1–6.9; реальные ключи ЮKassa и боевые
+> списания — стоп-маркер `[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ]`, код против sandbox/стаба; цены —
+> плейсхолдер конфигом (990 ₽/мес, годовая −20%, триал 14 дней).
+
+- [x] **6.1** Миграции: `Subscription`, `Payment`. Enum'ы биллинга.
+      — ✅ `00013_billing.sql` (БД→13): `subscriptions` (одна на аккаунт, UNIQUE; plan=billing_plan
+      pg-enum; status/period/provider — TEXT+CHECK как контракт; provider_customer_token — токен
+      рекуррента, НЕ данные карты; trial/period/cancel/dunning_attempts) + `payments` (amount_minor
+      bigint=копейки; partial-unique provider_payment_id для идемпотентности + idempotency_key;
+      receipt_id; FK CASCADE/SET NULL). Домен `billing.go` (enum'ы+IsValid, Subscription.GrantsPremium/
+      InTrial, BillingPeriod.Advance, Payment) + `features.go` (Feature, PlanAllows). Юнит-тесты. up/down/up.
+- [x] **6.2** Интерфейс `PaymentProvider` (Go) + реализация под ЮKassa.
+      — ✅ `internal/billing`: `Provider` (CreatePayment/ChargeRecurring/ParseWebhook), `StubProvider`
+      (dev, без денег), `YooKassaProvider` (боевой HTTP-адаптер, save_payment_method; **реальные
+      вызовы [ВЕРНУТЬСЯ]**), `SelectProvider` (ключи есть→ЮKassa, иначе stub). `Service` (оркестратор:
+      Checkout/HandleWebhook/Cancel/ProcessDue+dunning) с инъектируемыми часами. Юнит-тесты (fake repo +
+      stub): checkout→webhook→premium, идемпотентность, рекуррент, исчерпание dunning→Free, cancel.
+- [x] **6.3** Checkout Premium (`POST /billing/checkout`), сохранение платёжного токена.
+      — ✅ `api/billing.go` handleCheckout: pending-платёж + ссылка подтверждения провайдера; подписка
+      pending; токен рекуррента сохраняется по webhook'у успеха. GET /billing/subscription, POST cancel,
+      GET payments. Под операторским JWT (account-level). config: цены/триал/dunning/ЮKassa-ключи.
+- [x] **6.4** `worker-billing`: рекуррентные списания по токену; dunning при неуспехе; откат на Free.
+      — ✅ `cmd/worker-billing`: периодический цикл (BILLING_SCAN_INTERVAL) `Service.ProcessDue` —
+      списание по сохранённому токену → продление; неуспех→dunning (past_due, grace); исчерпание/отмена→
+      откат на Free. Dockerfile/compose/.env.
+- [x] **6.5** Webhook ЮKassa (`POST /billing/webhook/{provider}`): проверка подписи,
       идемпотентность по `provider_payment_id`, включение Premium feature-flags.
-- [ ] **6.6** Фискализация через «Мой налог» (ЮKassa передаёт в ФНС); `Payment.receipt_id`.
-- [ ] **6.7** Единый слой **feature-flags**: все ограничения тарифов (DESIGN §10) через флаги.
-- [ ] **6.8** Публичная оферта (условия подключения/отключения автоплатежа).
-- [ ] **6.9** Админка: страница тарифа, история платежей/чеков.
+      — ✅ Публичный роут (подлинность — на провайдере: ЮKassa по IP-allowlist; stub — нормализованный
+      JSON). HandleWebhook идемпотентен по provider_payment_id (повтор успеха не активирует дважды);
+      succeeded→активирует подписку+account.billing_plan=premium. Неизвестный провайдер→400.
+- [x] **6.6** Фискализация через «Мой налог» (ЮKassa передаёт в ФНС); `Payment.receipt_id`.
+      — ✅ receipt_id сохраняется из webhook'а/charge в `payments`. Боевая фискализация (реальный чек
+      ЮKassa→ФНС в режиме НПД) — часть `[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ БИЛЛИНГА]`; в dev stub проставляет плейсхолдер.
+- [x] **6.7** Единый слой **feature-flags**: все ограничения тарифов (DESIGN §10) через флаги.
+      — ✅ `domain.PlanAllows(plan, Feature)`; гейтинг ВКЛЮЧЕНИЯ premium-фич в `handlePatchPage`
+      (custom_domain/private/SMTP/white-label) и `handleAddAllowedEmail` → 403 `feature_required`
+      (выключение/очистка разрешены всегда). Эффективный флаг — `accounts.billing_plan`. 4 теста этапа 4
+      поднимают аккаунт до premium.
+- [x] **6.8** Публичная оферта (условия подключения/отключения автоплатежа).
+      — ✅ public-ssr `/offer` (SSR, RU/EN): предмет, цена/период, автоплатёж и его отключение, возвраты,
+      фискализация (НПД). **Черновик — финализировать текст/реквизиты с юристом перед запуском.**
+- [x] **6.9** Админка: страница тарифа, история платежей/чеков.
+      — ✅ FSD `entities/billing` + `pages/billing` (текущий план/статус/период; checkout monthly/yearly
+      с редиректом на confirmation_url; отмена автопродления; история платежей с чеками); ссылка «Тариф»
+      в шапке, роут `/billing`.
 
 **Acceptance:** оплата Premium включает фичи; рекуррентное списание проходит автоматически;
 неуспех запускает dunning и откат на Free; по каждому платежу формируется чек; повторный
-webhook не создаёт дублей.
+webhook не создаёт дублей. ✅ **Этап 6 закрыт по коду** (реальные ЮKassa-вызовы/чеки — на прод-деплое).
 
 ---
 

@@ -80,7 +80,7 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 | worker-telegram | Доставка Telegram + бот подписки | `worker-telegram` | — | создан (3.7), в compose |
 | worker-max | Доставка MAX | `worker-max` | — | ⏸ отложен (после Этапа 7) |
 | worker-webhook | Доставка Slack (Block Kit) + исходящие webhook | `worker-webhook` | — | создан (3.9, q.slack), в compose |
-| worker-billing | Рекуррентные списания | `worker-billing` | — | не создан |
+| worker-billing | Рекуррентные списания + dunning | `worker-billing` | — | создан (6.4), в compose |
 | worker-import | Миграция данных | `worker-import` | — | не создан |
 | tls-manager | ACME-выпуск/продление TLS кастом-доменов | `tls-manager` | — | создан (4.3.2), compose-профиль `edge` |
 | edge | Прокси кастом-доменов: TLS по SNI + HTTP-01 + роутинг | `edge` | 80/443 | создан (4.3.3), compose-профиль `edge` |
@@ -146,11 +146,26 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 > `worker-webhook` (потребляет `q.slack`, шлёт Block Kit в этот URL); **секреты OAuth воркеру не
 > нужны**. MVP: подписка на всю страницу (scope=page).
 
-### Платежи (worker-billing / ЮKassa)
+### Биллинг / тарифы (api + worker-billing, этап 6)
 | Переменная | Назначение |
 |-----------|-----------|
-| `YOOKASSA_SHOP_ID` `YOOKASSA_SECRET_KEY` | credentials ЮKassa |
-| `YOOKASSA_WEBHOOK_SECRET` | проверка подписи webhook |
+| `PREMIUM_MONTHLY_MINOR` | цена Premium в месяц, копейки (дефолт 99000 = 990 ₽). **Плейсхолдер** |
+| `PREMIUM_YEARLY_DISCOUNT_PCT` | скидка годовой подписки, % (дефолт 20) |
+| `BILLING_CURRENCY` | валюта (дефолт RUB) |
+| `TRIAL_DAYS` | длительность триала (дефолт 14; флоу с картой-на-файле — после боевой ЮKassa) |
+| `BILLING_SCAN_INTERVAL` | период цикла worker-billing (дефолт 1h) |
+| `BILLING_MAX_DUNNING` | число неуспешных списаний до отката на Free (дефолт 3) |
+| `BILLING_RETRY_INTERVAL` | пауза между попытками списания в past_due (дефолт 72h) |
+| `YOOKASSA_SHOP_ID` `YOOKASSA_SECRET_KEY` | credentials ЮKassa (api + worker-billing). **Пусто → stub-провайдер (dev, без реальных денег)** |
+
+> **Цена — плейсхолдер** (финализировать перед запуском: цена Статусмейта −10%, DESIGN §10).
+> Эффективный флаг тарифа — `accounts.billing_plan`; его включает webhook успешной оплаты, откат на
+> free делает `worker-billing`. Webhook ЮKassa (`POST /api/v1/billing/webhook/yookassa`) — публичный,
+> подлинность по IP-allowlist провайдера (не HMAC), ограничить на ingress.
+>
+> **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ БИЛЛИНГА]:** реальные ключи ЮKassa, согласование рекуррентов с менеджером,
+> боевые списания и фискальные чеки («Мой налог», режим НПД) **локально не проверены** — на прод-деплое
+> (sandbox→prod). Публичная оферта `/offer` — черновик, финализировать с юристом.
 
 ### Кастомные домены / TLS (этап 4.3)
 | Переменная | Сервис | Назначение |

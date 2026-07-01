@@ -59,6 +59,19 @@ type Config struct {
 	EdgeHTTPSAddr string // адрес :443 (TLS-терминация)
 	EdgeAPIURL    string // origin API для /api/*
 	EdgeSSRURL    string // origin public-ssr для страниц
+
+	// Биллинг (этап 6). Цены — плейсхолдер, финализируются перед запуском (Статусмейт −10%,
+	// DESIGN §10). Суммы в копейках. Боевой провайдер — ЮKassa; без credentials используется
+	// stub (dev). [ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ БИЛЛИНГА]: реальные ключи и боевые списания.
+	PremiumMonthlyMinor      int64         // цена Premium в месяц, копейки
+	PremiumYearlyDiscountPct int           // скидка годовой подписки, %
+	BillingCurrency          string        // ISO-код валюты (RUB)
+	TrialDays                int           // длительность пробного периода
+	BillingScanInterval      time.Duration // период цикла worker-billing
+	BillingMaxDunning        int           // число неуспешных попыток до отката на Free
+	BillingRetryInterval     time.Duration // пауза между попытками списания (dunning)
+	YooKassaShopID           string        // Shop ID ЮKassa (пусто → stub-провайдер)
+	YooKassaSecretKey        string        // секретный ключ ЮKassa
 }
 
 // IsProd сообщает, работаем ли в prod-режиме (влияет, напр., на флаг Secure у cookie).
@@ -102,6 +115,16 @@ func Load() Config {
 		EdgeHTTPSAddr: env("EDGE_HTTPS_ADDR", ":443"),
 		EdgeAPIURL:    env("EDGE_API_URL", "http://api:8080"),
 		EdgeSSRURL:    env("EDGE_SSR_URL", "http://public-ssr:3000"),
+
+		PremiumMonthlyMinor:      int64(envInt("PREMIUM_MONTHLY_MINOR", 99000)),
+		PremiumYearlyDiscountPct: envInt("PREMIUM_YEARLY_DISCOUNT_PCT", 20),
+		BillingCurrency:          env("BILLING_CURRENCY", "RUB"),
+		TrialDays:                envInt("TRIAL_DAYS", 14),
+		BillingScanInterval:      envDuration("BILLING_SCAN_INTERVAL", time.Hour),
+		BillingMaxDunning:        envInt("BILLING_MAX_DUNNING", 3),
+		BillingRetryInterval:     envDuration("BILLING_RETRY_INTERVAL", 72*time.Hour),
+		YooKassaShopID:           env("YOOKASSA_SHOP_ID", ""),
+		YooKassaSecretKey:        env("YOOKASSA_SECRET_KEY", ""),
 	}
 	// Дефолт секрета отписки — операторский JWT-секрет (для dev/одно-процессного запуска).
 	if c.SubscriptionSecret == "" {

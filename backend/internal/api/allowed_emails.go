@@ -49,7 +49,14 @@ func (s *server) handleAddAllowedEmail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, ok := s.authorizePage(w, r, id); !ok {
+	page, ok := s.authorizePage(w, r, id)
+	if !ok {
+		return
+	}
+	// Списки доступа — часть приватных страниц (premium, этап 6.7).
+	if plan, ok := s.accountPlan(w, r, page.AccountID); !ok {
+		return
+	} else if !requireFeature(w, plan, domain.FeaturePrivatePages) {
 		return
 	}
 	var req struct {

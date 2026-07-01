@@ -176,6 +176,13 @@ func (s *server) handlePatchPage(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+
+	// Гейтинг premium-фич (этап 6.7, DESIGN §10): на тарифе Free нельзя ВКЛЮЧАТЬ платные
+	// возможности. Выключение/очистка разрешены всегда (дружелюбно к откату на Free).
+	if !s.gatePagePremiumFeatures(w, r, page.AccountID, req) {
+		return
+	}
+
 	if req.Name != nil {
 		page.Name = *req.Name
 	}

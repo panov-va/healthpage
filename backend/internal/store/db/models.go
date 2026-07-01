@@ -428,6 +428,22 @@ type PageAllowedEmail struct {
 	CreatedAt    time.Time
 }
 
+type Payment struct {
+	ID                uuid.UUID
+	AccountID         uuid.UUID
+	SubscriptionID    *uuid.UUID
+	AmountMinor       int64
+	Currency          string
+	Status            string
+	Provider          *string
+	ProviderPaymentID *string
+	IdempotencyKey    *string
+	ReceiptID         *string
+	BillingPeriod     *string
+	CreatedAt         time.Time
+	PaidAt            *time.Time
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
@@ -474,6 +490,23 @@ type Subscriber struct {
 	ComponentIds     []uuid.UUID
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+type Subscription struct {
+	ID                    uuid.UUID
+	AccountID             uuid.UUID
+	Plan                  BillingPlan
+	Status                string
+	BillingPeriod         *string
+	Provider              *string
+	ProviderCustomerToken *string
+	TrialEndsAt           *time.Time
+	CurrentPeriodStart    *time.Time
+	CurrentPeriodEnd      *time.Time
+	CancelAtPeriodEnd     bool
+	DunningAttempts       int32
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type User struct {

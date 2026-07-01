@@ -15,6 +15,7 @@ import (
 
 	"github.com/healthpage/backend/internal/api"
 	"github.com/healthpage/backend/internal/auth"
+	"github.com/healthpage/backend/internal/billing"
 	"github.com/healthpage/backend/internal/config"
 	"github.com/healthpage/backend/internal/notify"
 	"github.com/healthpage/backend/internal/queue"
@@ -59,6 +60,9 @@ func main() {
 	// Slack OAuth — опционально: без SLACK_CLIENT_ID/SECRET эндпоинты подписки Slack отвечают 404.
 	slackOAuth := setupSlackOAuth(cfg)
 
+	// Биллинг (этап 6): провайдер ЮKassa при наличии ключей, иначе stub (dev).
+	billingSvc := setupBilling(cfg, st)
+
 	srv := &http.Server{
 		Addr: ":" + cfg.HTTPPort,
 		Handler: api.NewRouter(api.Deps{
@@ -68,6 +72,7 @@ func main() {
 			SubSecret:   cfg.SubscriptionSecret,
 			BaseURL:     cfg.BaseURL,
 			SlackOAuth:  slackOAuth,
+			Billing:     billingSvc,
 			Prod:        cfg.IsProd(),
 			RefreshTTL:  cfg.RefreshTTL,
 			CNAMETarget: cfg.CNAMETarget,
@@ -133,6 +138,22 @@ func setupSlackOAuth(cfg config.Config) *slack.OAuth {
 	redirectURI := cfg.BaseURL + "/api/v1/subscribe/slack/callback"
 	log.Printf("slack: OAuth подписка включена (redirect_uri=%s)", redirectURI)
 	return slack.NewOAuth(cfg.SlackClientID, cfg.SlackClientSecret, redirectURI, nil)
+}
+
+// setupBilling собирает сервис биллинга: провайдер ЮKassa при наличии ключей, иначе stub (dev).
+// Цены — плейсхолдер из конфига (финализируются перед запуском, DESIGN §10).
+func setupBilling(cfg config.Config, st *store.Store) *billing.Service {
+	provider := billing.SelectProvider(cfg.YooKassaShopID, cfg.YooKassaSecretKey, cfg.BaseURL)
+	if cfg.YooKassaShopID == "" || cfg.YooKassaSecretKey == "" {
+		log.Println("billing: ключи ЮKassa не заданы — используется stub-провайдер (dev)")
+	}
+	pricing := billing.DefaultPricing(cfg.PremiumMonthlyMinor, cfg.PremiumYearlyDiscountPct, cfg.TrialDays, cfg.BillingCurrency)
+	return billing.NewService(st, billing.Config{
+		Provider:      provider,
+		Pricing:       pricing,
+		MaxDunning:    cfg.BillingMaxDunning,
+		RetryInterval: cfg.BillingRetryInterval,
+	})
 }
 
 // runHealthCheck дёргает локальный /healthz и завершает процесс с кодом 0/1.

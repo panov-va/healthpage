@@ -60,6 +60,14 @@ export type SubscriberCreate = Schemas["SubscriberCreate"];
 export type SubscriberChannel = Schemas["SubscriberChannel"];
 export type SubscriberScope = Schemas["SubscriberScope"];
 
+// ── биллинг (этап 6) ──
+export type Subscription = Schemas["Subscription"];
+export type Payment = Schemas["Payment"];
+export type CheckoutRequest = Schemas["CheckoutRequest"];
+export type CheckoutResponse = Schemas["CheckoutResponse"];
+export type BillingPlan = Schemas["BillingPlan"];
+export type BillingPeriod = Schemas["BillingPeriod"];
+
 export type ApiError = Schemas["Error"];
 
 // Нормативный список статусов компонента (для селектов в UI).

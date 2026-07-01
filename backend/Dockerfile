@@ -16,6 +16,7 @@ RUN CGO_ENABLED=0 go build -o /out/worker-telegram ./cmd/worker-telegram
 RUN CGO_ENABLED=0 go build -o /out/worker-webhook ./cmd/worker-webhook
 RUN CGO_ENABLED=0 go build -o /out/tls-manager ./cmd/tls-manager
 RUN CGO_ENABLED=0 go build -o /out/edge ./cmd/edge
+RUN CGO_ENABLED=0 go build -o /out/worker-billing ./cmd/worker-billing
 
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
@@ -27,6 +28,7 @@ COPY --from=build /out/worker-telegram /app/worker-telegram
 COPY --from=build /out/worker-webhook /app/worker-webhook
 COPY --from=build /out/tls-manager /app/tls-manager
 COPY --from=build /out/edge /app/edge
+COPY --from=build /out/worker-billing /app/worker-billing
 COPY --from=build /src/migrations /app/migrations
 EXPOSE 8080
 ENTRYPOINT ["/app/api"]

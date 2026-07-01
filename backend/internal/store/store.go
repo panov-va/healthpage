@@ -101,6 +101,15 @@ func (s *Store) AccountByOwner(ctx context.Context, ownerUserID uuid.UUID) (doma
 	return mapAccount(a), nil
 }
 
+// AccountByID возвращает аккаунт по id. ErrNotFound если нет.
+func (s *Store) AccountByID(ctx context.Context, id uuid.UUID) (domain.Account, error) {
+	a, err := s.q.GetAccountByID(ctx, id)
+	if err != nil {
+		return domain.Account{}, wrapNotFound(err)
+	}
+	return mapAccount(a), nil
+}
+
 // UserByEmail находит пользователя по email (без учёта регистра). ErrNotFound если нет.
 func (s *Store) UserByEmail(ctx context.Context, email string) (domain.User, error) {
 	u, err := s.q.GetUserByEmail(ctx, email)

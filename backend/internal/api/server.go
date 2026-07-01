@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/healthpage/backend/internal/auth"
+	"github.com/healthpage/backend/internal/billing"
 	"github.com/healthpage/backend/internal/domain"
 	"github.com/healthpage/backend/internal/notify"
 	"github.com/healthpage/backend/internal/slack"
@@ -26,12 +27,13 @@ const (
 type Deps struct {
 	Auth       *auth.Service
 	Store      *store.Store
-	Notifier   *notify.Engine // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
-	SubSecret  string         // секрет HMAC-токенов отписки (должен совпадать с worker-email)
-	BaseURL    string         // базовый URL для ссылок в фидах/письмах
-	SlackOAuth *slack.OAuth   // OAuth-клиент Slack; nil — подписка Slack выключена
-	Prod       bool           // влияет на флаг Secure у refresh-cookie
-	RefreshTTL time.Duration  // срок жизни refresh-cookie
+	Notifier   *notify.Engine   // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
+	SubSecret  string           // секрет HMAC-токенов отписки (должен совпадать с worker-email)
+	BaseURL    string           // базовый URL для ссылок в фидах/письмах
+	SlackOAuth *slack.OAuth     // OAuth-клиент Slack; nil — подписка Slack выключена
+	Billing    *billing.Service // сервис биллинга (этап 6); nil — эндпоинты /billing/* отвечают 503
+	Prod       bool             // влияет на флаг Secure у refresh-cookie
+	RefreshTTL time.Duration    // срок жизни refresh-cookie
 
 	// Кастомные домены (этап 4.3): целевой хост для CNAME и резолвер для верификации.
 	// CNAMEResolver nil → используется net.DefaultResolver.LookupCNAME (тесты инъектируют фейк).
@@ -46,6 +48,7 @@ type server struct {
 	subSecret     string
 	baseURL       string
 	slackOAuth    *slack.OAuth
+	billing       *billing.Service
 	prod          bool
 	refreshTTL    time.Duration
 	cnameTarget   string
@@ -54,7 +57,7 @@ type server struct {
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, billing: d.Billing, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver}
 	if s.cnameResolver == nil {
 		s.cnameResolver = net.DefaultResolver.LookupCNAME
 	}
@@ -105,6 +108,9 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/integrations/{integration_id}/prometheus", s.handlePrometheusWebhook)
 		r.Post("/integrations/{integration_id}/generic", s.handleGenericWebhook)
 		r.Post("/integrations/{integration_id}/pagerduty", s.handlePagerDutyWebhook)
+
+		// Webhook платёжного провайдера (этап 6): публичный, подлинность проверяет провайдер.
+		r.Post("/billing/webhook/{provider}", s.handleBillingWebhook)
 
 		// Управляющие эндпоинты — только по операторскому JWT (ApiToken — этап 5).
 		// {page} здесь трактуется как uuid.
@@ -159,6 +165,12 @@ func NewRouter(d Deps) http.Handler {
 			r.Get("/tokens", s.handleListTokens)
 			r.Post("/tokens", s.handleCreateToken)
 			r.Delete("/tokens/{id}", s.handleDeleteToken)
+
+			// Биллинг (этап 6). Управление — только оператор (account-level).
+			r.Get("/billing/subscription", s.handleGetSubscription)
+			r.Post("/billing/checkout", s.handleCheckout)
+			r.Post("/billing/cancel", s.handleCancelSubscription)
+			r.Get("/billing/payments", s.handleListPayments)
 
 			// Webhook-интеграции (этап 5.3). Управление — только оператор (минтит секрет).
 			r.Get("/webhook-integrations", s.handleListWebhookIntegrations)

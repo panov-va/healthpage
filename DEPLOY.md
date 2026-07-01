@@ -1,207 +1,216 @@
-# DEPLOY.md — деплой и CI/CD HealthPage
+# DEPLOY.md — деплой и CI/CD HealthPage (Dokploy)
 
 > Как приложение разворачивается в проде и как устроен конвейер «закоммитил → развернулось».
-> Логика/архитектура — в `DESIGN.md`; порты/env/сервисы — в `INFRASTRUCTURE.md`; здесь — **процесс
-> деплоя**. Значения секретов НИ здесь, ни в git — только имена и где взять (CLAUDE.md §2).
+> Логика/архитектура — в `DESIGN.md`; порты/env/сервисы — в `INFRASTRUCTURE.md`. Секреты — НИ здесь,
+> ни в git: только имена и где взять (CLAUDE.md §2).
+>
+> **Выбранная модель (решения человека):** self-hosted PaaS **Dokploy** на одном РФ-VPS;
+> компоненты — **отдельные приложения**, Postgres/Redis — **managed-БД Dokploy** (с их бэкапами),
+> RabbitMQ — приложение из своего образа; образы **собираются в GitHub CI и пушатся в GHCR**,
+> Dokploy тянет их по вебхуку. Ingress/TLS — **Traefik** (встроен в Dokploy).
+> Ручная альтернатива (compose + Caddy + SSH) — в Приложении B.
 
 ---
 
-## 1. Модель деплоя (MVP)
-
-Выбрана простая, подходящая MVP модель (не «на вырост»):
-
-- **Один сервер (VPS) в РФ** (152-ФЗ: ПД в России), Ubuntu 22.04+, Docker + Docker Compose.
-- **Образы** собираются в CI и хранятся в **GHCR** (GitHub Container Registry). На сервере — только
-  `docker compose pull && up` (сервер ничего не собирает).
-- **Ingress — Caddy**: терминирует HTTPS (автоматический Let's Encrypt), роутит по доменам.
-- **CD — GitHub Actions**: `push в main → CI (тесты/линт) → Deploy (сборка образов + SSH-деплой)`.
+## 1. Модель деплоя
 
 ```
  git push main
       │
       ▼
- ┌─────────┐   success   ┌──────────────────────────┐   ssh    ┌──────────────────────┐
- │  CI      │ ─────────► │ Deploy: build+push GHCR   │ ───────► │  VPS (РФ)             │
- │ test/lint│            │ (backend, rabbitmq, ssr,  │          │  compose pull+migrate │
- └─────────┘            │  admin)                    │          │  + up (Caddy/api/...) │
-                        └──────────────────────────┘          └──────────────────────┘
+ ┌────────┐ success ┌────────────────────────────┐  push  ┌──────────┐
+ │  CI    │ ───────►│ build+push образов          │ ─────► │  GHCR    │
+ │test/lint│        │ (backend, rabbitmq, ssr,adm) │        └────┬─────┘
+ └────────┘         └──────────────┬──────────────┘             │ pull (:latest)
+                                   │ webhook                     ▼
+                                   └───────────────────► ┌──────────────────────────┐
+                                                         │  VPS (РФ): Dokploy        │
+                                                         │  Traefik (TLS) + apps + БД│
+                                                         └──────────────────────────┘
 ```
 
-**Альтернативы (не сейчас):** managed k8s (Yandex/VK) — для масштаба; PaaS — быстрее, но 152-ФЗ и
-кастомные домены усложняют. MVP держим на одном VPS + compose.
+**Почему Dokploy:** TLS, деплой из реестра, бэкапы БД, логи, откат, роутинг доменов — из коробки,
+через UI, без ручных скриптов. Traefik (встроен) хорошо ложится на будущие кастомные домены клиентов.
+CI (тесты/линт/сборка образов) остаётся на GitHub — Dokploy отвечает только за выкатку и БД.
 
-### [РЕШИТЬ] Провайдер и сервер
-Выбрать РФ-провайдера и создать VPS. Кандидаты: **Yandex Cloud / VK Cloud / Selectel / Timeweb**.
-Рекомендация для старта: VPS 2 vCPU / 4 GB / 40+ GB SSD (postgres+redis+rabbitmq+api+воркеры+2 фронта+caddy).
-Данные (postgres volume) — на диске в РФ; бэкапы — там же/в РФ-объектном хранилище.
+**Требования к серверу:** рекомендую **2 vCPU / 4 GB (лучше 6 GB) / 40+ GB SSD**, Ubuntu 22.04+.
+Dokploy сам ест ~0.3–0.5 GB — на 4 GB работает, но с 6 GB спокойнее (control-plane + стек + сборки нет,
+т.к. образы из GHCR). Данные (managed Postgres) — том на диске в РФ (152-ФЗ).
 
 ---
 
-## 2. Первичный провижининг сервера (один раз)
+## 2. Установка Dokploy (один раз)
 
 ```bash
-# 1) Docker + compose-plugin
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER   # перелогиниться
-
-# 2) Каталог деплоя (совпадает с секретом DEPLOY_PATH)
-sudo mkdir -p /opt/healthpage && sudo chown $USER /opt/healthpage
-cd /opt/healthpage
-
-# 3) Заполнить ./.env (см. §4) — секреты только здесь, НЕ в git
-nano .env
+# На сервере (root):
+curl -sSL https://dokploy.com/install.sh | sh
 ```
 
-CD сам кладёт на сервер `docker-compose.prod.yml` и `Caddyfile` при каждом деплое (scp). Первый
-деплой можно инициировать вручную из вкладки **Actions → Deploy → Run workflow**, либо запустить
-локально скопировав файлы и выполнив шаги из §5.
+- Открыть UI `http://<IP>:3000`, создать администратора. **Закрыть UI наружу** (firewall/VPN)
+  или повесить на отдельный домен с TLS — это control-plane.
+- Traefik ставится автоматически и занимает :80/:443.
+
+> Версии Dokploy отличаются по названиям полей UI — ниже описаны шаги по смыслу; сверяйтесь с UI.
 
 ---
 
-## 3. DNS
+## 3. Managed-БД Dokploy
 
-A-записи на IP сервера (значения доменов должны совпадать с `.env`):
+Создать через **Databases → Create**:
 
-| Запись | Тип | Значение | Назначение |
-|--------|-----|----------|-----------|
-| `healthpage.ru` | A | IP сервера | лендинг + публичные страницы (public-ssr) |
-| `www.healthpage.ru` | A | IP сервера | редирект/алиас |
-| `app.healthpage.ru` | A | IP сервера | админка (SPA) + `/api/*` |
-| `api.healthpage.ru` | A | IP сервера | публичный REST API (опционально) |
-| `cname.healthpage.ru` | A | IP edge | цель CNAME кастомных доменов клиентов (этап 4.3, позже) |
+| БД | Тип | Назначение | Бэкапы |
+|----|-----|-----------|--------|
+| PostgreSQL 16 | managed | источник истины | **включить бэкап в S3 по расписанию** (закрывает задачу 7.4) |
+| Redis 7 | managed | кэш публичной сводки | не критично |
 
-Caddy выпустит TLS автоматически, когда домены зарезолвятся на сервер.
+RabbitMQ в каталоге managed-БД Dokploy нет — он разворачивается как **приложение** (§4, свой образ
+с delayed-плагином). После создания каждой БД Dokploy покажет **внутренний host, порт, пароль** —
+они пойдут в `DATABASE_URL` / `REDIS_URL` приложений (§5).
 
 ---
 
-## 4. Переменные окружения сервера (`/opt/healthpage/.env`)
+## 4. Приложения (Docker image из GHCR)
 
-Наследует `.env.example` (dev-дефолты) + **прод-специфичные**. Все секреты — сильные случайные значения.
+Для каждого — **Create Application → Provider: Docker (image)**, реестр GHCR (см. §7), тег `:latest`,
+своя вкладка **Environment** и (где нужно) **Domains**. Все приложения — в одном проекте Dokploy,
+чтобы были в общей сети и видели друг друга по внутренним именам.
+
+| Приложение | Образ (`${REGISTRY}` = `ghcr.io/<owner>`) | Домен (Traefik) | Особое |
+|-----------|-------------------------------------------|-----------------|--------|
+| `rabbitmq` | `${REGISTRY}/healthpage-rabbitmq:latest` | — | внутр.; env RABBITMQ_DEFAULT_USER/PASS |
+| `api` | `${REGISTRY}/healthpage-backend:latest` | `api.healthpage.ru` + `app.healthpage.ru` path `/api` | **Pre-Deploy: миграции** (§6); порт 8080 |
+| `worker-email` | `…/healthpage-backend:latest` | — | **command/entrypoint override:** `/app/worker-email` |
+| `worker-telegram` | `…/healthpage-backend:latest` | — | override `/app/worker-telegram` (нужен TELEGRAM_BOT_TOKEN) |
+| `worker-webhook` | `…/healthpage-backend:latest` | — | override `/app/worker-webhook` |
+| `worker-billing` | `…/healthpage-backend:latest` | — | override `/app/worker-billing` |
+| `worker-import` | `…/healthpage-backend:latest` | — | override `/app/worker-import` |
+| `public-ssr` | `${REGISTRY}/healthpage-public-ssr:latest` | `healthpage.ru`, `www.healthpage.ru` | порт 3000 |
+| `admin` | `${REGISTRY}/healthpage-admin:latest` | `app.healthpage.ru` (path `/`) | порт 80 (nginx) |
+
+> **Один образ `healthpage-backend` — семь приложений** (api + 6 воркеров), различаются только
+> командой запуска (Docker Command / Entrypoint override = `/app/worker-...`; у api — дефолт `/app/api`).
+> Образ distroless (без shell) — override задавать **массивом** (`/app/worker-email`), не `sh -c`.
+
+---
+
+## 5. Внутренняя сеть и переменные окружения
+
+Приложения одного проекта видят друг друга по **внутренним именам** (Dokploy/Traefik network).
+`api` и воркеры обращаются к БД/брокеру по хостам, которые Dokploy показал при создании managed-БД
+и приложения `rabbitmq`. Заполняются в **Environment** каждого приложения:
 
 ```dotenv
-# --- Реестр образов и деплой ---
-REGISTRY=ghcr.io/<owner>          # префикс образов GHCR (owner = организация/пользователь GitHub)
-TAG=latest                        # деплой переопределяет на git sha; для ручного up — latest
-
-# --- Домены / TLS (Caddy) ---
-PUBLIC_DOMAIN=healthpage.ru
-ADMIN_DOMAIN=app.healthpage.ru
-API_DOMAIN=api.healthpage.ru
-ACME_EMAIL=ops@healthpage.ru      # контакт Let's Encrypt
-
-# --- Общие ---
 APP_ENV=prod
-BASE_URL=https://api.healthpage.ru   # публичный origin API (ссылки в письмах/OAuth/редиректах)
-HTTP_PORT=8080
-
-# --- PostgreSQL (сильный пароль!) ---
-POSTGRES_USER=healthpage
-POSTGRES_PASSWORD=<strong-random>
-POSTGRES_DB=healthpage
-DATABASE_URL=postgres://healthpage:<strong-random>@postgres:5432/healthpage?sslmode=disable
-
-# --- Redis / RabbitMQ ---
-REDIS_URL=redis://redis:6379/0
-RABBITMQ_DEFAULT_USER=healthpage
-RABBITMQ_DEFAULT_PASS=<strong-random>
-RABBITMQ_URL=amqp://healthpage:<strong-random>@rabbitmq:5672/
-
-# --- Auth (обязателен) ---
+BASE_URL=https://api.healthpage.ru
+# Хосты — из Dokploy (managed-БД и приложения rabbitmq); НЕ localhost.
+DATABASE_URL=postgres://<user>:<pass>@<pg-host>:5432/healthpage?sslmode=disable
+REDIS_URL=redis://<redis-host>:6379/0
+RABBITMQ_URL=amqp://<user>:<pass>@<rabbitmq-host>:5672/
 JWT_SECRET=<long-random>
-SUBSCRIPTION_SECRET=<long-random>   # ДОЛЖЕН совпадать между api и воркерами
-
-# --- Email (SMTP), Telegram, Slack, ЮKassa, биллинг, домены ---
-# см. INFRASTRUCTURE.md §3 — задать перед включением соответствующих фич.
+SUBSCRIPTION_SECRET=<long-random>   # ДОЛЖЕН быть ОДИНАКОВ в api и ВСЕХ воркерах
+# Биллинг/SMTP/Telegram/Slack/ЮKassa/домены — по мере включения фич (INFRASTRUCTURE §3).
 ```
 
-> `SUBSCRIPTION_SECRET` одинаков во всех процессах (иначе не сойдутся токены отписки/доступа/magic-link).
-> Пустой `TELEGRAM_BOT_TOKEN` → worker-telegram не стартует: либо задать токен, либо убрать сервис.
+- `public-ssr`: `HEALTHPAGE_API_URL=http://<api-host>:8080/api/v1` (внутренний адрес api-приложения).
+- `admin`: env не нужны (статика; API проксирует Traefik, см. §6).
+- **`SUBSCRIPTION_SECRET` одинаков во всех 7 backend-приложениях** — иначе не сойдутся токены
+  отписки/доступа/magic-link. Совет: держать общий набор env в переменных проекта Dokploy (Shared),
+  если версия поддерживает, либо аккуратно продублировать.
 
 ---
 
-## 5. GitHub Secrets (Settings → Secrets and variables → Actions)
+## 6. Домены, TLS и роутинг (Traefik)
 
-CD использует (значения задаёт человек):
+Traefik в Dokploy выпускает TLS (Let's Encrypt) автоматически при добавлении домена приложению.
+Для DNS — A-записи на IP сервера: `healthpage.ru`, `www`, `app.`, `api.` (+ `cname.healthpage.ru`
+для кастомных доменов клиентов позже).
+
+- `public-ssr` → домены `healthpage.ru`, `www.healthpage.ru`, контейнерный порт **3000**.
+- `admin` → домен `app.healthpage.ru`, path `/`, порт **80**.
+- `api` → домен `api.healthpage.ru` (порт **8080**) **и** второй домен `app.healthpage.ru` с path
+  **`/api`** — чтобы относительные запросы админки (`/api/v1/...`) уходили в api. (Path-роут в Dokploy:
+  добавить домен с указанием path; Traefik разрулит `app.*/api/*`→api, `app.*/*`→admin.)
+- `/metrics` наружу не публикуем (Prometheus скрейпит api по внутренней сети, §10).
+
+### Миграции (Pre-Deploy)
+Схема применяется **до** старта нового api. Варианты (по возможностям версии Dokploy):
+- **Pre-Deploy command** у приложения `api`: команда `/app/migrate up` (образ distroless — задать как
+  бинарь с аргументом, без `sh -c`). Dokploy выполнит её на новом образе перед переключением.
+- Если Pre-Deploy недоступен/оборачивает в shell — сделать отдельное **one-off приложение**
+  `healthpage-migrate` (тот же образ, entrypoint `/app/migrate`, command `up`) и запускать его вручную
+  при деплое с миграцией (схема меняется редко). Топологию RabbitMQ объявить **один раз** тем же
+  способом: one-off `queue-setup` (entrypoint `/app/queue-setup`), идемпотентно.
+
+---
+
+## 7. GitHub → GHCR → Dokploy (CI/CD)
+
+1. **CI** (`.github/workflows/ci.yml`, уже есть): на push/PR — тесты/линт/сборка фронтов (гейт).
+2. **Deploy** (`.github/workflows/deploy.yml`): после успешного CI на `main` → собирает и пушит в
+   GHCR 4 образа (`healthpage-backend|rabbitmq|public-ssr|admin`, теги `<sha>`+`latest`) → **дёргает
+   deploy-вебхуки Dokploy** (POST на каждый URL) → Dokploy тянет `:latest` и передеплоивает.
+
+**Что настроить:**
+- **Доступ Dokploy к GHCR:** в Dokploy → Registry добавить `ghcr.io` с логином GitHub и **PAT с
+  `read:packages`** (образы приватного репозитория). Либо сделать пакеты публичными.
+- **Вебхуки приложений:** у каждого приложения в Dokploy включить Auto-Deploy / получить Deploy Webhook
+  URL. Собрать URL всех приложений, которые надо обновлять на релизе (api + 6 воркеров + 2 фронта +
+  rabbitmq по необходимости), в **GitHub Secret `DOKPLOY_WEBHOOKS`** (через пробел/перенос строки).
+- Секрет `GITHUB_TOKEN` в CI (встроенный) даёт `packages: write` — пуш в GHCR без доп. секретов.
+
+> `api` и воркеры используют один образ `healthpage-backend` — на релизе дёргаются вебхуки каждого
+> из них (все подтянут новый `:latest`). Порядок нестрогий; миграции — до api (§6).
+
+Откат: образы тегируются по git sha — в Dokploy переключить приложение на конкретный `…:<sha>` и
+передеплоить (или повторно запустить прошлый релиз).
+
+---
+
+## 8. Бэкапы, мониторинг, кастомные домены
+
+- **Бэкапы (7.4):** managed-Postgres Dokploy → расписание бэкапа в S3-совместимое РФ-хранилище;
+  периодически проверять восстановление. Redis/RabbitMQ — не критичны.
+- **Мониторинг (7.3):** `api` отдаёт `/metrics` (внутр. сеть). Dokploy даёт логи/базовые метрики
+  контейнеров в UI; для дашбордов — Prometheus+Grafana поверх (скрейп api по внутреннему хосту).
+- **Кастомные домены клиентов (edge/tls-manager):** `edge` слушает :443 и конфликтует с Traefik.
+  **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** предпочтительно перевести их на **Traefik
+  on-demand TLS** (динамический выпуск для домена клиента после проверки допустимости) вместо
+  edge/tls-manager, раз Traefik уже стоит. Решить перед включением.
+
+---
+
+## 9. Чек-лист перед первым прод-запуском
+
+- [ ] Dokploy установлен, UI закрыт наружу; Traefik держит :80/:443; DNS настроен.
+- [ ] Managed Postgres + Redis созданы; бэкап Postgres в S3 включён и проверен.
+- [ ] `rabbitmq` + `api` + 6 воркеров + `public-ssr` + `admin` подняты из GHCR; env заполнены;
+      `SUBSCRIPTION_SECRET` одинаков во всех backend-приложениях.
+- [ ] Домены привязаны, TLS выпущен; `app.*/api` роутится в api; `/metrics` не публичен.
+- [ ] Миграции: `migrate up` (Pre-Deploy или one-off) прошёл; `queue-setup` выполнен один раз.
+- [ ] GHCR-доступ в Dokploy настроен; `DOKPLOY_WEBHOOKS` в GitHub Secrets; тестовый push выкатился.
+- [ ] **Биллинг:** ключи ЮKassa, рекурренты согласованы, цены финальны, оферта готова.
+- [ ] **Импорт:** StatusPal API сверен на живом ключе; 152-ФЗ по импортированным подписчикам (opt-in).
+- [ ] Первый оператор зарегистрирован; smoke основных сценариев.
+
+---
+
+## Приложение A. GitHub Secrets
 
 | Secret | Назначение |
 |--------|-----------|
-| `DEPLOY_HOST` | IP/хост сервера (SSH) |
-| `DEPLOY_USER` | SSH-пользователь (в группе docker) |
-| `DEPLOY_SSH_KEY` | приватный SSH-ключ для доступа на сервер |
-| `DEPLOY_PATH` | каталог деплоя, напр. `/opt/healthpage` |
+| `DOKPLOY_WEBHOOKS` | список deploy-вебхуков приложений Dokploy (пробел/перенос строки) |
+| `GITHUB_TOKEN` | встроенный, `packages: write` для пуша в GHCR — задавать не нужно |
 
-GHCR-логин в CI использует встроенный `GITHUB_TOKEN` (права `packages: write`) — отдельный секрет
-не нужен. Пул приватных образов на сервере в шаге деплоя логинится тем же токеном.
-
-> Если репозиторий приватный, а сервер должен тянуть образы — токен пробрасывается в SSH-шаг
-> (`GHCR_TOKEN`). Для долгоживущего доступа можно вместо этого сделать пакеты públic или завести
-> отдельный read-only PAT и логинить им сервер.
+(SSH-секреты `DEPLOY_*` нужны только для альтернативы из Приложения B.)
 
 ---
 
-## 6. Что делает конвейер (`.github/workflows/deploy.yml`)
+## Приложение B. Альтернатива без Dokploy (compose + Caddy + SSH)
 
-1. Триггер: успешное завершение workflow **CI** на `main` (или ручной `workflow_dispatch`).
-2. **build** (matrix): собирает и пушит в GHCR 4 образа с тегами `<sha>` и `latest`:
-   `healthpage-backend`, `healthpage-rabbitmq`, `healthpage-public-ssr`, `healthpage-admin`.
-3. **deploy**: scp `docker-compose.prod.yml` + `Caddyfile` на сервер; по SSH:
-   - `docker login ghcr.io`, `docker compose pull` (тег = git sha);
-   - **миграции** `migrate up` (аддитивные — до перезапуска api);
-   - `docker compose up -d` + идемпотентный `queue-setup`; `docker image prune`.
-
-Downtime при MVP-деплое — секунды (пересоздание контейнеров). Zero-downtime — позже (не в MVP).
-
----
-
-## 7. Откат
-
-Образы тегируются по git sha. Откат — задеплоить предыдущий тег:
-
-```bash
-cd /opt/healthpage
-export REGISTRY=ghcr.io/<owner> TAG=<предыдущий-sha>
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d
-```
-
-Миграции аддитивны и назад не откатываются автоматически (при необходимости — `migrate down`
-вручную, осознанно). Не деплоить одновременно несовместимую схему и старый код.
-
----
-
-## 8. Бэкапы (этап 7.4 — прод)
-
-- **PostgreSQL:** ежедневный `pg_dump` в РФ-объектное хранилище + снапшоты диска провайдера;
-  регулярная проверка восстановления. Volume `pgdata` — источник истины.
-- RabbitMQ/Redis — не критичны (очереди/кэш восстановимы), спец-бэкап не нужен.
-
----
-
-## 9. Кастомные домены клиентов (профиль `edge`)
-
-`edge` + `tls-manager` (этап 4.3) обслуживают HTTPS на доменах клиентов (TLS по SNI из БД).
-**[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** `edge` и `caddy` оба слушают :443 — на одном
-сервере это конфликт. Варианты: (а) единый ingress — перевести кастомные домены на Caddy on-demand TLS
-(эндпоинт-проверка допустимости домена), отказавшись от edge; (б) вынести edge на отдельный сервер/порт;
-(в) фронтить всё через edge (добавить ему роутинг основных доменов). Решить перед включением профиля.
-
----
-
-## 10. Мониторинг (этап 7.3 — прод)
-
-`api` отдаёт метрики на `api:8080/metrics` (внутренняя сеть; наружу через `API_DOMAIN` закрыто).
-Prometheus на сервере скрейпит `api:8080/metrics`; Grafana — дашборды/алерты. Собственная
-статус-страница сервиса — отдельным инстансом/пробером.
-
----
-
-## 11. Чек-лист перед первым прод-запуском (стоп-маркеры)
-
-- [ ] Провайдер РФ выбран, VPS создан, `.env` заполнен сильными секретами.
-- [ ] GitHub Secrets заданы (`DEPLOY_*`); DNS настроен; Caddy выпустил TLS.
-- [ ] **Биллинг:** реальные ключи ЮKassa, согласование рекуррентов, финальные цены; оферта финализирована.
-- [ ] **Импорт:** сверить StatusPal API v2 на живом ключе; 152-ФЗ по импортированным подписчикам (opt-in).
-- [ ] **Кастомные домены:** решён единый ingress (§9), проверен выпуск TLS.
-- [ ] Бэкапы БД настроены и проверено восстановление.
-- [ ] Первый оператор зарегистрирован; smoke основных сценариев на проде.
+Если откажетесь от Dokploy — в репозитории есть готовый ручной путь (собран и провалидирован):
+`docker-compose.prod.yml` (весь стек, образы из GHCR) + `Caddyfile` (ingress, авто-TLS) и вариант
+`deploy.yml` с SSH-деплоем (scp compose+Caddyfile → `docker login` → `compose pull` → `migrate up` →
+`up` → `queue-setup`). Нужны GitHub Secrets `DEPLOY_HOST/USER/SSH_KEY/PATH` и server `.env`
+(REGISTRY, домены, ACME_EMAIL, все секреты). Этот путь прозрачнее и без control-plane, но без
+бэкапов/логов/отката «из коробки» — их пришлось бы настраивать отдельно.
 ```

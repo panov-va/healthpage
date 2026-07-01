@@ -1,7 +1,8 @@
 name: Deploy
 
 # Запускается ПОСЛЕ успешного workflow "CI" на ветке main (тесты/линт/сборка зелёные).
-# Пуш в main → CI → (успех) → Deploy: собрать и запушить образы в GHCR, затем задеплоить на сервер.
+# Пуш в main → CI → (успех) → build+push образов в GHCR → триггер передеплоя в Dokploy (вебхуки).
+# Сборка образов — здесь; выкатку и БД ведёт Dokploy на сервере (см. DEPLOY.md).
 on:
   workflow_run:
     workflows: ["CI"]
@@ -65,44 +66,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
+  # Триггерим передеплой в Dokploy: образы уже в GHCR, Dokploy тянет :latest по вебхуку.
+  # Секрет DOKPLOY_WEBHOOKS — список URL-вебхуков приложений (по одному на строку или через пробел):
+  # api и все воркеры используют образ healthpage-backend, поэтому у каждого свой вебхук.
+  # migrate up вынесен в Pre-Deploy команду api-приложения в самом Dokploy (см. DEPLOY.md).
+  trigger-dokploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
-      # Копируем прод-compose и Caddyfile на сервер (секреты — в ./.env на сервере, не из git).
-      - name: Copy deploy files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "docker-compose.prod.yml,Caddyfile"
-          target: ${{ secrets.DEPLOY_PATH }}
-      - name: Deploy on server
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Trigger Dokploy redeploys
         env:
-          TAG: ${{ github.event.workflow_run.head_sha || github.sha }}
-          REGISTRY: ${{ env.REGISTRY }}
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: TAG,REGISTRY,GHCR_USER,GHCR_TOKEN
-          script: |
-            set -euo pipefail
-            cd "${{ secrets.DEPLOY_PATH }}"
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            export TAG REGISTRY
-            # Тянем свежие образы нужного тега.
-            docker compose -f docker-compose.prod.yml pull
-            # Применяем миграции ДО перезапуска api (аддитивные — безопасно на работающем стеке).
-            docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/migrate api up
-            # Объявляем топологию RabbitMQ (идемпотентно) и поднимаем стек.
-            docker compose -f docker-compose.prod.yml up -d
-            docker compose -f docker-compose.prod.yml run --rm --entrypoint /app/queue-setup api || true
-            docker image prune -f
+          WEBHOOKS: ${{ secrets.DOKPLOY_WEBHOOKS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOKS:-}" ]; then
+            echo "DOKPLOY_WEBHOOKS не задан — пропуск (настройте вебхуки приложений в Dokploy)."
+            exit 0
+          fi
+          for url in $WEBHOOKS; do
+            echo "→ deploy: ${url%%\?*}"
+            curl -fsS -X POST "$url" && echo " ok" || echo " FAILED"
+          done

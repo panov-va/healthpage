@@ -225,18 +225,22 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 > **Полный процесс деплоя и CI/CD — в `DEPLOY.md`.** Здесь — краткая сводка.
 
 - On-prem **не делаем**, только SaaS (DESIGN §12).
-- **Модель (MVP):** один VPS в РФ (152-ФЗ) + Docker Compose (`docker-compose.prod.yml`), образы из
-  **GHCR**, ingress **Caddy** (авто-TLS), CD — **GitHub Actions** (`.github/workflows/deploy.yml`):
-  push в `main` → CI → build+push образов → SSH-деплой (`migrate` + `compose pull && up`).
-- **[РЕШИТЬ] провайдер РФ** (Yandex Cloud / VK Cloud / Selectel / Timeweb) — см. DEPLOY.md §1.
-- **Прод-образы:** `healthpage-backend` (api + все воркеры + migrate/queue-setup), `healthpage-rabbitmq`
-  (+delayed-плагин), `healthpage-public-ssr` (Next standalone), `healthpage-admin` (nginx+SPA).
-  Dockerfile'ы: `backend/Dockerfile`, `docker/rabbitmq/Dockerfile`, `frontend/*/Dockerfile`.
-- Rate-limiting — на уровне ingress (Caddy/будущий gateway), не в коде MVP.
+- **Модель (решение человека):** self-hosted PaaS **Dokploy** на одном VPS в РФ (152-ФЗ).
+  Компоненты — отдельные приложения; Postgres/Redis — **managed-БД Dokploy** (с бэкапами в S3 —
+  закрывает 7.4); RabbitMQ — приложение из своего образа; ingress/TLS — **Traefik** (встроен).
+  Образы **собираются в GitHub CI и пушатся в GHCR**, Dokploy тянет их по deploy-вебхуку.
+- **CD** (`.github/workflows/deploy.yml`): push в `main` → CI → build+push 4 образов в GHCR →
+  триггер вебхуков Dokploy. Полный runbook — **`DEPLOY.md`** (Dokploy — основной путь; compose+Caddy+SSH —
+  Приложение B, готовый ручной вариант).
+- **Прод-образы:** `healthpage-backend` (api + все воркеры + migrate/queue-setup, distroless),
+  `healthpage-rabbitmq` (+delayed-плагин), `healthpage-public-ssr` (Next standalone),
+  `healthpage-admin` (nginx+SPA). Dockerfile'ы: `backend/Dockerfile`, `docker/rabbitmq/Dockerfile`,
+  `frontend/*/Dockerfile` (admin собирается с контекстом = корень репо ради `shared/api-types`).
+- Rate-limiting — на уровне ingress (Traefik/будущий gateway), не в коде MVP.
 - Публичная часть (`public-ssr`) деплоится отдельным образом от админки (DESIGN §9).
-- Секреты — в `/opt/healthpage/.env` на сервере + GitHub Secrets (`DEPLOY_*`); список — DEPLOY.md §4–5.
-- Кастомные домены (`edge`/`tls-manager`, профиль `edge`) — конфликт :443 с Caddy, см. DEPLOY.md §9
-  (**[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]**).
+- Секреты — в Environment приложений Dokploy + GitHub Secret `DOKPLOY_WEBHOOKS`; список — DEPLOY.md §5, A.
+- **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** `edge`/`tls-manager` конфликтуют с Traefik по :443 —
+  предпочтительно перевести кастомные домены на Traefik on-demand TLS (DEPLOY.md §8).
 
 ---
 

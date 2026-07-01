@@ -229,7 +229,7 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
   Компоненты — отдельные приложения; Postgres/Redis — **managed-БД Dokploy** (с бэкапами в S3 —
   закрывает 7.4); RabbitMQ — приложение из своего образа; ingress/TLS — **Traefik** (встроен).
   Образы **собираются в GitHub CI и пушатся в GHCR**, Dokploy тянет их по deploy-вебхуку.
-- **CD** (`.github/workflows/deploy.yml`): push в `main` → CI → build+push 4 образов в GHCR →
+- **CD** (`.github/workflows/deploy.yml`): push в `master` → CI → build+push 4 образов в GHCR →
   триггер вебхуков Dokploy. Полный runbook — **`DEPLOY.md`** (Dokploy — основной путь; compose+Caddy+SSH —
   Приложение B, готовый ручной вариант).
 - **Прод-образы:** `healthpage-backend` (api + все воркеры + migrate/queue-setup, distroless),

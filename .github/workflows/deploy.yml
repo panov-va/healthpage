@@ -1,13 +1,13 @@
 name: Deploy
 
-# Запускается ПОСЛЕ успешного workflow "CI" на ветке main (тесты/линт/сборка зелёные).
-# Пуш в main → CI → (успех) → build+push образов в GHCR → триггер передеплоя в Dokploy (вебхуки).
+# Запускается ПОСЛЕ успешного workflow "CI" на ветке master (тесты/линт/сборка зелёные).
+# Пуш в master → CI → (успех) → build+push образов в GHCR → триггер передеплоя в Dokploy (вебхуки).
 # Сборка образов — здесь; выкатку и БД ведёт Dokploy на сервере (см. DEPLOY.md).
 on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main]
+    branches: [master]
   # Ручной повторный деплой (например, того же коммита) — вкладка Actions.
   workflow_dispatch:
 

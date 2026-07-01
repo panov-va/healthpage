@@ -15,7 +15,7 @@
 ## 1. Модель деплоя
 
 ```
- git push main
+ git push master
       │
       ▼
  ┌────────┐ success ┌────────────────────────────┐  push  ┌──────────┐
@@ -146,7 +146,7 @@ Traefik в Dokploy выпускает TLS (Let's Encrypt) автоматичес
 ## 7. GitHub → GHCR → Dokploy (CI/CD)
 
 1. **CI** (`.github/workflows/ci.yml`, уже есть): на push/PR — тесты/линт/сборка фронтов (гейт).
-2. **Deploy** (`.github/workflows/deploy.yml`): после успешного CI на `main` → собирает и пушит в
+2. **Deploy** (`.github/workflows/deploy.yml`): после успешного CI на `master` → собирает и пушит в
    GHCR 4 образа (`healthpage-backend|rabbitmq|public-ssr|admin`, теги `<sha>`+`latest`) → **дёргает
    deploy-вебхуки Dokploy** (POST на каждый URL) → Dokploy тянет `:latest` и передеплоивает.
 

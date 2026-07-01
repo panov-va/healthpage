@@ -34,7 +34,12 @@ admin+public-ssr «Релизы»); 7.3 **только `/metrics`** (Prometheus,
 решение человека); 7.9 UI импорта. Добавлен `worker-import`, зависимость `prometheus/client_golang`.
 **Отложено (решения человека):** 7.4 бэкапы + Grafana/вывод статуса/собственная статус-страница — прод;
 7.7 Instatus / 7.8 Статусмейт — позже; inbound generic/pagerduty webhook'и (501, этап 5); боевая ЮKassa.
-**Следующий шаг:** коммит человеком; затем прод-подготовка (стоп-маркеры ниже) ИЛИ 7.7/7.8/бэкапы по приоритету.
+**Деплой/CI-CD (решения человека, 2026-07-01):** self-hosted **Dokploy** на РФ-VPS; отдельные
+приложения + managed Postgres/Redis Dokploy (бэкапы → 7.4); RabbitMQ — приложение; образы CI→GHCR,
+Dokploy тянет по вебхуку; ingress/TLS — Traefik. Полный runbook — **`DEPLOY.md`** (compose+Caddy+SSH —
+Приложение B, ручная альтернатива). CD: `.github/workflows/deploy.yml` (build+push GHCR + вебхуки).
+Провайдер РФ — [РЕШИТЬ]; сервер у человека есть. Следующий шаг — установка Dokploy по DEPLOY.md.
+**Следующий шаг (код):** коммит человеком; затем прод-подготовка (стоп-маркеры ниже) ИЛИ 7.7/7.8/бэкапы по приоритету.
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ ИМПОРТА]:** схема StatusPal API v2 (`internal/importer/statuspal.go`) — по
 докам, сверить на живом ключе (прод); 152-ФЗ — импортированные email `confirmed=false` (opt-in).
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ БИЛЛИНГА]:** реальные ключи ЮKassa, согласование рекуррентов с менеджером,
@@ -1502,3 +1507,25 @@ _Этап 0 — завершён и закоммичен._
   принимает channel=webhook (URL); admin +webhook в каналах. Контракт НЕ менялся. Юнит + интеграц.
   PG16 + живой e2e PG+RabbitMQ PASS; build/test/vet/lint + admin зелёные. **Этап 5 закрыт по коду**
   (5.1–5.4; inbound generic/pagerduty отложены, 501). Дальше — Этап 6 (биллинг) по приоритету человека.
+- 2026-07-01 — **Этап 6 (Биллинг) закрыт по коду.** Контракт `/billing/*` уже был — не менялся.
+  Миграция 00013 (subscriptions/payments). Пакет internal/billing (Provider + StubProvider +
+  YooKassaProvider + Service: checkout/webhook/рекуррент/dunning/cancel). API `/billing/*` + webhook.
+  worker-billing (периодический цикл). Feature-flags (6.7): `domain.PlanAllows` + гейтинг premium-фич
+  в handlePatchPage/allowed-emails → 403. Оферта public-ssr `/offer`. Админка «Тариф». Решения
+  человека: полный объём; реальная ЮKassa/цены/чеки — [ВЕРНУТЬСЯ], цены плейсхолдер. Юнит+интеграц.
+  PG16 + живой smoke PASS; build/test/lint + фронты зелёные. Дальше — Этап 7.
+- 2026-07-01 — **Этап 7 закрыт по коду** (кроме отложенного). 7.1 uptime (домен ComputeUptime,
+  under_maintenance исключён; API + полоса на public-ssr); 7.2 changelog (контракт расширен;
+  миграция 00014; админка+public-ssr «Релизы»); 7.3 **только /metrics** (Prometheus, решение человека);
+  7.5 каркас импорта (миграция 00015, ImportJob/external_id_map/Importer/q.import/worker-import,
+  контракт: ImportRequest.status_page_id); 7.6 адаптер **StatusPal** (только он); 7.9 UI импорта.
+  Отложено человеком: 7.4 бэкапы + 7.7/7.8 Instatus/Статусмейт — прод/позже. Dep prometheus/client_golang.
+  Юнит+интеграц. PG16 + живой smoke (metrics/uptime/changelog/import) PASS; всё зелёное. Дальше — деплой.
+- 2026-07-01 — **Деплой/CI-CD.** Модель (решения человека): self-hosted PaaS **Dokploy** на одном
+  РФ-VPS; отдельные приложения + managed Postgres/Redis Dokploy (бэкапы → закрывает 7.4); RabbitMQ —
+  приложение; образы CI→GHCR, Dokploy тянет по вебхуку; ingress/TLS — Traefik. Артефакты: Dockerfile'ы
+  фронтов (public-ssr standalone; admin nginx, контекст=корень репо), `docker-compose.prod.yml`+
+  `Caddyfile` (Приложение B — ручная альтернатива), `.github/workflows/deploy.yml` (build+push GHCR +
+  триггер вебхуков Dokploy), **DEPLOY.md** (полный runbook Dokploy). Провайдер РФ — [РЕШИТЬ]; сервер у
+  человека есть. Провалидировано (compose config, Caddy validate, actionlint, сборка образов фронтов).
+  Дальше — практическая установка Dokploy по DEPLOY.md.

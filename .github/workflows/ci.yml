@@ -8,8 +8,6 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
     defaults:
       run:
         working-directory: backend
@@ -24,9 +22,9 @@ jobs:
       - name: Test
         run: go test ./...
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9.2.1
         with:
-          version: v1.64
+          version: v2.12.2
           working-directory: backend
 
   frontend:

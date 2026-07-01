@@ -20,6 +20,14 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+      # revive-правила godoc-стиля (обязательный комментарий на каждый экспортируемый
+      # идентификатор / package-comment) не даём как обязательные: проект придерживается
+      # правила "комментарий только когда WHY не очевиден" (CLAUDE.md), а не Go-doc-конвенции
+      # для публичных библиотек. Остальные revive-проверки (error-strings, empty-block,
+      # context-as-argument и т.п.) остаются включёнными.
+      - linters:
+          - revive
+        text: '^(exported|package-comments):'
 
 formatters:
   enable:

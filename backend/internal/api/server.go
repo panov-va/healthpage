@@ -1,3 +1,5 @@
+// Package api реализует HTTP-слой HealthPage: маршрутизацию, хендлеры и middleware
+// поверх доменной логики и store (CLAUDE.md §7 — наружу из backend не экспортируется).
 package api
 
 import (

@@ -196,7 +196,7 @@ func runHealthCheck(port string) {
 		log.Printf("healthcheck failed: %v", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("healthcheck status: %d", resp.StatusCode)
 		os.Exit(1)

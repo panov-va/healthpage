@@ -1,9 +1,12 @@
 package api
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/healthpage/backend/internal/store"
 )
 
 type domainStatusResponse struct {
@@ -76,4 +79,29 @@ func (s *server) cnameMatchesTarget(r *http.Request, host string) bool {
 
 func normalizeHost(h string) string {
 	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(h)), ".")
+}
+
+type slugByDomainResponse struct {
+	Slug string `json:"slug"`
+}
+
+// handleGetSlugByDomain резолвит slug страницы по верифицированному собственному домену клиента
+// (этап 4.3) — используется public-ssr для маршрутизации по Host-заголовку, чтобы корень
+// кастомного домена открывал страницу статуса, а не лендинг.
+func (s *server) handleGetSlugByDomain(w http.ResponseWriter, r *http.Request) {
+	host := normalizeHost(r.URL.Query().Get("domain"))
+	if host == "" {
+		writeError(w, http.StatusNotFound, "not_found", "домен не найден")
+		return
+	}
+	slug, err := s.store.SlugByCustomDomain(r.Context(), host)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "not_found", "домен не найден")
+		} else {
+			writeServerError(w, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, slugByDomainResponse{Slug: slug})
 }

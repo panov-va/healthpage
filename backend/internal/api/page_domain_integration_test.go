@@ -116,12 +116,33 @@ func TestCustomDomainIntegration(t *testing.T) {
 	patchJSON(t, srv.URL+"/api/v1/pages/"+page2.ID, token,
 		map[string]any{"custom_domain": "other.acme.test"}, http.StatusConflict, nil)
 
+	// GET /pages/by-domain резолвит slug для верифицированного домена (нужно public-ssr для
+	// маршрутизации по Host — этап 4.3.3). Пока текущий домен ("other.acme.test") не верифицирован
+	// (verifyBad выше) — 404.
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/pages/by-domain?domain=other.acme.test", "", nil, http.StatusNotFound)
+
+	// Возвращаем домен на верифицируемый и повторно проверяем — теперь by-domain находит slug.
+	patchJSON(t, srv.URL+"/api/v1/pages/"+page.ID, token,
+		map[string]any{"custom_domain": "status.acme.test"}, http.StatusOK, nil)
+	verifyDomain(t, srv.URL+"/api/v1/pages/"+page.ID+"/domain/verify", token, http.StatusOK, &verifyOK)
+	var byDomain slugByDomainResponse
+	doJSON(t, srv.URL+"/api/v1/pages/by-domain?domain=status.acme.test", "", nil, http.StatusOK, &byDomain)
+	if byDomain.Slug != page.Slug {
+		t.Fatalf("by-domain slug = %q, want %q", byDomain.Slug, page.Slug)
+	}
+
+	// Неизвестный домен → 404.
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/pages/by-domain?domain=unknown.example.net", "", nil, http.StatusNotFound)
+
 	// Снятие домена (null) → custom_domain очищен.
 	patchJSON(t, srv.URL+"/api/v1/pages/"+page.ID, token,
 		map[string]any{"custom_domain": nil}, http.StatusOK, &patched)
 	if patched.CustomDomain != nil {
 		t.Fatalf("custom_domain после снятия: %v", patched.CustomDomain)
 	}
+
+	// После снятия домена он больше не резолвится.
+	doStatus(t, http.MethodGet, srv.URL+"/api/v1/pages/by-domain?domain=status.acme.test", "", nil, http.StatusNotFound)
 }
 
 // verifyDomain выполняет POST /domain/verify с токеном, проверяет статус и декодирует ответ.

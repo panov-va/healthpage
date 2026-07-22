@@ -97,6 +97,7 @@ func NewRouter(d Deps) http.Handler {
 
 		// Публичные read-only эндпоинты (без авторизации). Параметр сегмента страницы — {page}
 		// (единое имя для chi); здесь трактуется как slug.
+		r.Get("/pages/by-domain", s.handleGetSlugByDomain)
 		r.Post("/pages/{page}/access", s.handlePageAccess)
 		r.Post("/pages/{page}/access/request-link", s.handleRequestAccessLink)
 		r.Get("/pages/{page}/access/verify", s.handleVerifyAccessLink)

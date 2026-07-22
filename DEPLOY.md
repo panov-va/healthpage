@@ -206,10 +206,18 @@ Traefik в Dokploy выпускает TLS (Let's Encrypt) автоматичес
   Реализация — `backend/internal/dokploy` (клиент), подключается через `POST /pages/{id}` →
   `handleVerifyDomain` (`backend/internal/api/page_domain.go`).
   - **Настройка:** Dokploy → Profile → API/CLI Keys → Generate New Key. Прописать в env `api`:
-    `DOKPLOY_API_URL` (`http://<host>:3000/api`), `DOKPLOY_API_TOKEN` (сам ключ, вписывается
-    вручную человеком — не через агента), `DOKPLOY_PUBLIC_SSR_APP_ID` (ID приложения `public-ssr`
-    в Dokploy, виден в URL его страницы). Без `DOKPLOY_API_TOKEN` домен остаётся только
-    `domain_verified=true` без реального подключения (не ошибка, просто интеграция выключена).
+    `DOKPLOY_API_URL`, `DOKPLOY_API_TOKEN` (сам ключ, вписывается вручную человеком — не через
+    агента), `DOKPLOY_PUBLIC_SSR_APP_ID` (ID приложения `public-ssr` в Dokploy, виден в URL его
+    страницы). Без `DOKPLOY_API_TOKEN` домен остаётся только `domain_verified=true` без реального
+    подключения (не ошибка, просто интеграция выключена).
+  - **`DOKPLOY_API_URL` — только внутренний адрес `http://dokploy:3000/api`, НЕ публичный IP/домен
+    VPS.** Прод-инцидент (2026-07-22): `DOKPLOY_API_URL=http://<публичный-IP>:3000/api` вызывал
+    `context deadline exceeded` на каждом `POST /domain.create` — контейнер `api` не может
+    достучаться до публичного IP той же машины, на которой сам работает (hairpin NAT, типичное
+    ограничение сетей облачных VPS). Диагностировано через Docker Terminal контейнера: запрос на
+    публичный IP:3000 подвисал и падал по таймауту, запрос на `http://dokploy:3000` (внутреннее имя
+    сервиса Dokploy в Swarm-сети, резолвится через embedded DNS) отвечал мгновенно. Фикс — везде
+    указывать внутреннее имя `dokploy` (порт Dokploy по умолчанию — 3000), а не IP/домен сервера.
   - **`CNAME_TARGET` должен реально резолвиться:** verify сравнивает CNAME клиента со значением
     `CNAME_TARGET` (дефолт `cname.healthpage.ru`) чисто текстово — но чтобы трафик клиента
     физически доходил до сервера, у самого `CNAME_TARGET` должна быть A-запись на IP сервера

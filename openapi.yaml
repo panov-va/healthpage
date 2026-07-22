@@ -208,6 +208,33 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /pages/by-domain:
+    get:
+      tags: [Public]
+      summary: Резолв slug страницы по собственному домену (этап 4.3)
+      description: >
+        Возвращает slug страницы, к которой привязан и верифицирован переданный custom_domain —
+        используется public-ssr для маршрутизации запросов по Host-заголовку клиентского домена
+        (корень кастомного домена должен открывать страницу статуса, а не лендинг). Домен без
+        подтверждённой верификации (domain_verified=false) считается не найденным.
+      security: []
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slug]
+                properties:
+                  slug: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /pages/{slug}/summary:
     get:
       tags: [Public]

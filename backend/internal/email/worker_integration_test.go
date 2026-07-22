@@ -119,7 +119,7 @@ func TestWorkerIntegration(t *testing.T) {
 	}
 
 	sender := &captureSender{}
-	worker := email.NewWorker(st, sender, engine, email.SMTP{}, "https://h", "https://h", "secret", nil)
+	worker := email.NewWorker(st, sender, sender, engine, email.SMTP{}, "https://h", "https://h", "secret", nil)
 
 	if d := worker.Process(ctx, body); d != email.Ack {
 		t.Fatalf("Process = %v, want Ack", d)

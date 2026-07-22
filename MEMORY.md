@@ -51,6 +51,53 @@ Caddy+SSH — Приложение B, ручная альтернатива). CD
 → `POST /pages` со slug `demo` → `POST /components` ×N). Пароль демо-аккаунта не хранится в репо —
 только у человека.
 **Следующий шаг (код):** коммит человеком; затем прод-подготовка (стоп-маркеры ниже) ИЛИ 7.7/7.8/бэкапы по приоритету.
+**2026-07-22 — `worker-telegram` задеплоен и живой** (человек дал `TELEGRAM_BOT_TOKEN`, задеплоили через
+Dokploy): бот `@healtpage_ru_bot` авторизован, `q.telegram` потребляется, long-poll `getUpdates` запущен.
+Webhook-URL добавлен в секрет `DOKPLOY_WEBHOOKS` на GitHub (человек внёс сам) — теперь редеплоится
+вместе с остальными 7 по пушу. **⚠️ Найдено при проверке (2026-07-22): на публичной статус-странице
+(`frontend/public-ssr`) НЕТ НИКАКОГО self-serve виджета подписки** — ни email-формы (double opt-in
+backend `POST /pages/{slug}/subscribe` есть и работает, но нигде не вызывается из UI), ни кнопки
+Telegram (deep-link `https://t.me/<bot>?start=<slug>` — бот его умеет обрабатывать, `internal/telegram/
+bot.go:111`, но ссылки нигде нет), ни «Add to Slack» (`GET /pages/{slug}/subscribe/slack/start` тоже
+без UI-входа). Единственный способ подписать кого-то сейчас — вручную через админку (этап 3.10).
+Проверено grep'ом по всему `frontend/public-ssr/app` — ни одного упоминания subscribe/telegram/slack/
+rss/ical в JSX. **Это отдельная задача (виджет подписки на публичной странице), не багфикс** — решение
+человека: делать после SMTP-инфраструктуры (см. ниже), приоритет подтверждён 2026-07-22.
+- 2026-07-22 — **Настроен SMTP через UniSender Go, найден и исправлен реальный прод-баг: письма
+  зависали навечно.** Человек дал SMTP-реквизиты UniSender Go (`smtp.go2.unisender.ru:587`, логин
+  `8285366`, `SMTP_FROM=status@healthpage.ru`); прописали в `worker-email` через Dokploy, задеплоили —
+  подхватил (пропала строка "SMTP_HOST не задан"). **Тестовая отправка зависла**: `rabbitmqctl
+  list_queues` на проде показал `q.email messages_unacknowledged=1` — сообщение доставлено
+  консьюмеру, но не ack/nack. Диагностика через Docker Terminal (`rabbitmq` в Dokploy): `nc -zv
+  smtp.go2.unisender.ru 587/465` и даже `smtp.gmail.com:587` — **все таймаут**. Вывод: у
+  VPS-провайдера прод-сервера исходящие SMTP-порты (25/465/587) заблокированы на уровне сети (типовая
+  антиспам-политика), не проблема кода/DKIM/UniSender. `net/smtp.SendMail` при этом не имеет таймаута
+  на подключение — воркер молча висит навсегда и блокирует обработку ВСЕХ следующих писем в очереди
+  (единственный consumer застревает на одном сообщении).
+  - **Исправлено системно:** `internal/email/sender.go` — `dialTimeout=15s`, явный
+    `net.DialTimeout`/`tls.DialWithDialer` вместо `smtp.SendMail`/`tls.Dial` без таймаута (свой
+    `sendStartTLS`, `sendImplicitTLS` тоже поправлен). Недоступность SMTP теперь даёт быструю ошибку
+    вместо зависания навечно — актуально и для кастомного SMTP клиентских страниц (4.5).
+  - **Решение человека:** вместо борьбы с провайдером за открытие портов — системный (платформенный)
+    отправитель переведён на **HTTP Web API UniSender Go**
+    (`POST https://goapi.unisender.ru/ru/transactional/api/v1/email/send.json`, `X-API-KEY`,
+    HTTPS:443 не блокируется). Новый `internal/email/unisender.go`: `UniSenderGoSender` (реализует
+    `Sender`; `Endpoint` — инъекция для тестов). `internal/config` +`UniSenderGoAPIKey` (env
+    `UNISENDER_GO_API_KEY`).
+  - **Рефакторинг `internal/email/worker.go`:** `Worker` держит `systemSender`+`customSender` вместо
+    одного `sender` — кастомный SMTP страницы (4.5, произвольный провайдер клиента) **всегда** идёт
+    через настоящий `SMTPSender`, даже если системный — `UniSenderGoSender` (нельзя провести чужой
+    почтовый сервер через свой аккаунт UniSender Go). `effectiveSMTP`/`build` возвращают доп. флаг
+    `custom`; `senderFor(custom)` выбирает отправителя. `NewWorker` сигнатура расширена (systemSender,
+    customSender). `cmd/worker-email`: приоритет — `UNISENDER_GO_API_KEY` → UniSender Go API; иначе
+    `SMTP_HOST` → SMTPSender; иначе LogSender (dev).
+  - **Проверено:** юнит `unisender_test.go` (httptest: happy path/api-error/rejected-recipient/
+    no-api-key) + `worker_test.go` (`TestEffectiveSMTPCustomVsSystem`, `TestSenderForDispatchesByCustom`
+    — ловит перепутанный выбор системный/кастомный отправитель) + весь существующий `internal/email`
+    зелёный. build/vet/gofmt/golangci-lint + полный `go build ./...` зелёные. Контракт openapi.yaml
+    НЕ менялся (внутренняя реализация доставки).
+  - **Дальше:** прописать `UNISENDER_GO_API_KEY` в `worker-email` на Dokploy (ключ из UniSender Go →
+    раздел Web API, отдельный от SMTP-логина/пароля) и передеплоить; повторить тестовую отправку.
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ ИМПОРТА] — частично снят (2026-07-22):** схема StatusPal API v2
 (`internal/importer/statuspal.go`) сверена на живом read-only ключе клиента (services/incidents/
 subscribers — реальные обёртки, дерево через children_ids, UUID-подписчики, отсутствие /maintenances

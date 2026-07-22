@@ -43,6 +43,14 @@ type Config struct {
 	SMTPFrom     string // адрес отправителя по умолчанию
 	SMTPTLS      bool   // true — неявный TLS (порт 465); иначе STARTTLS
 
+	// UniSenderGoAPIKey (если задан) — системный отправитель шлёт через HTTP Web API UniSender Go
+	// (порт 443) вместо SMTP. Решение 2026-07-22: у VPS-провайдера прод-сервера исходящие SMTP-порты
+	// (587/465) заблокированы на уровне сети (подтверждено — таймаут даже до smtp.gmail.com), а HTTPS
+	// не блокируется. Кастомный SMTP страницы (4.5, произвольный провайдер клиента) не затрагивается —
+	// для него всегда используется настоящий SMTP-протокол (SMTPSender), т.к. мы не можем провести
+	// чужой почтовый сервер через свой аккаунт UniSender Go.
+	UniSenderGoAPIKey string
+
 	// TelegramBotToken — токен бота от @BotFather (worker-telegram). Если пуст — воркер не
 	// стартует (бот без токена бессмыслен).
 	TelegramBotToken string
@@ -118,6 +126,8 @@ func Load() Config {
 		SMTPPassword: env("SMTP_PASSWORD", ""),
 		SMTPFrom:     env("SMTP_FROM", ""),
 		SMTPTLS:      env("SMTP_TLS", "") == "true",
+
+		UniSenderGoAPIKey: env("UNISENDER_GO_API_KEY", ""),
 
 		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""),
 

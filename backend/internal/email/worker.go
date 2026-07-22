@@ -40,22 +40,38 @@ type Retrier interface {
 // Worker обрабатывает одно сообщение q.email: идемпотентность по Notification.id, рендер,
 // отправка через Sender, отметка sent или планирование ретрая (DESIGN §8.1).
 type Worker struct {
-	store      WorkerStore
-	sender     Sender
-	retrier    Retrier
-	systemSMTP SMTP   // дефолтный отправитель (если у страницы нет своего)
-	publicURL  string // origin public-ssr: ссылка на страницу, приватный доступ, отписку
-	apiURL     string // origin самого API: ссылка подтверждения подписки (/api/v1/subscribe/confirm)
-	secret     string // секрет HMAC-токена отписки
-	log        *slog.Logger
+	store WorkerStore
+	// systemSender — платформенный отправитель по умолчанию (SMTP / UniSender Go API / Log,
+	// выбирается в cmd/worker-email по конфигу). customSender — для страниц со своим smtp_config
+	// (4.5, произвольный провайдер клиента) — всегда настоящий SMTP-протокол, независимо от того,
+	// чем шлёт системный (нельзя провести чужой SMTP через наш аккаунт UniSender Go).
+	systemSender Sender
+	customSender Sender
+	retrier      Retrier
+	systemSMTP   SMTP   // дефолтный SMTP (если у страницы нет своего) — используется как cfg.From и т.п.
+	publicURL    string // origin public-ssr: ссылка на страницу, приватный доступ, отписку
+	apiURL       string // origin самого API: ссылка подтверждения подписки (/api/v1/subscribe/confirm)
+	secret       string // секрет HMAC-токена отписки
+	log          *slog.Logger
 }
 
 // NewWorker собирает воркера. logger=nil → slog.Default().
-func NewWorker(st WorkerStore, sender Sender, retrier Retrier, systemSMTP SMTP, publicURL, apiURL, secret string, logger *slog.Logger) *Worker {
+func NewWorker(st WorkerStore, systemSender, customSender Sender, retrier Retrier, systemSMTP SMTP, publicURL, apiURL, secret string, logger *slog.Logger) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{store: st, sender: sender, retrier: retrier, systemSMTP: systemSMTP, publicURL: publicURL, apiURL: apiURL, secret: secret, log: logger}
+	return &Worker{
+		store: st, systemSender: systemSender, customSender: customSender, retrier: retrier,
+		systemSMTP: systemSMTP, publicURL: publicURL, apiURL: apiURL, secret: secret, log: logger,
+	}
+}
+
+// senderFor выбирает отправителя по тому, кастомный ли это SMTP страницы.
+func (w *Worker) senderFor(custom bool) Sender {
+	if custom {
+		return w.customSender
+	}
+	return w.systemSender
 }
 
 // Process обрабатывает тело сообщения и возвращает решение по доставке.
@@ -91,13 +107,13 @@ func (w *Worker) Process(ctx context.Context, body []byte) Disposition {
 		return Ack
 	}
 
-	content, cfg, err := w.build(ctx, msg)
+	content, cfg, custom, err := w.build(ctx, msg)
 	if err != nil {
 		w.log.Error("email: build", "id", nid, "event", msg.Event, "err", err)
 		return Reject
 	}
 
-	if err := w.sender.Send(ctx, cfg, Email{
+	if err := w.senderFor(custom).Send(ctx, cfg, Email{
 		To: msg.Address, Subject: content.Subject, TextBody: content.TextBody, HTMLBody: content.HTMLBody,
 	}); err != nil {
 		w.log.Warn("email: send failed, scheduling retry", "id", nid, "err", err)
@@ -117,12 +133,12 @@ func (w *Worker) Process(ctx context.Context, body []byte) Disposition {
 // processTransactional шлёт письмо без журнала (magic-link 4.2.1): build → send.
 // При ошибке сборки/отправки — Reject (в DLQ; клиент перезапросит ссылку), без ретрай-цикла.
 func (w *Worker) processTransactional(ctx context.Context, msg notify.Message) Disposition {
-	content, cfg, err := w.build(ctx, msg)
+	content, cfg, custom, err := w.build(ctx, msg)
 	if err != nil {
 		w.log.Error("email: build transactional", "event", msg.Event, "err", err)
 		return Reject
 	}
-	if err := w.sender.Send(ctx, cfg, Email{
+	if err := w.senderFor(custom).Send(ctx, cfg, Email{
 		To: msg.Address, Subject: content.Subject, TextBody: content.TextBody, HTMLBody: content.HTMLBody,
 	}); err != nil {
 		w.log.Warn("email: transactional send failed, dropping", "event", msg.Event, "err", err)
@@ -147,14 +163,14 @@ func (w *Worker) handleSendFailure(ctx context.Context, msg notify.Message) Disp
 }
 
 // build загружает страницу, рендерит письмо и выбирает SMTP (кастомный страницы или системный).
-func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, error) {
+func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, bool, error) {
 	pageID, err := uuid.Parse(msg.StatusPageID)
 	if err != nil {
-		return Content{}, SMTP{}, fmt.Errorf("email: bad status_page_id: %w", err)
+		return Content{}, SMTP{}, false, fmt.Errorf("email: bad status_page_id: %w", err)
 	}
 	page, err := w.store.StatusPageByID(ctx, pageID)
 	if err != nil {
-		return Content{}, SMTP{}, fmt.Errorf("email: load page: %w", err)
+		return Content{}, SMTP{}, false, fmt.Errorf("email: load page: %w", err)
 	}
 
 	in := RenderInput{
@@ -168,27 +184,27 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, 
 	case domain.EventSubscriberConfirm:
 		var p notify.ConfirmPayload
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
-			return Content{}, SMTP{}, fmt.Errorf("email: confirm payload: %w", err)
+			return Content{}, SMTP{}, false, fmt.Errorf("email: confirm payload: %w", err)
 		}
 		in.ConfirmURL = w.apiURL + "/api/v1/subscribe/confirm?token=" + url.QueryEscape(p.ConfirmToken)
 	case domain.EventAccessLink:
 		var p notify.AccessLinkPayload
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
-			return Content{}, SMTP{}, fmt.Errorf("email: access link payload: %w", err)
+			return Content{}, SMTP{}, false, fmt.Errorf("email: access link payload: %w", err)
 		}
 		// Ссылка ведёт на public-ssr, который обменяет токен на cookie доступа (как пароль 4.2).
 		in.AccessURL = w.publicURL + "/status/" + page.Slug + "/access/verify?token=" + url.QueryEscape(p.Token)
 	case domain.EventIncidentNew, domain.EventIncidentUpdate:
 		var p notify.IncidentPayload
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
-			return Content{}, SMTP{}, fmt.Errorf("email: incident payload: %w", err)
+			return Content{}, SMTP{}, false, fmt.Errorf("email: incident payload: %w", err)
 		}
 		in.Incident = &p
 		in.UnsubscribeURL = w.unsubscribeURL(msg.SubscriberID)
 	case domain.EventMaintenanceScheduled, domain.EventMaintenanceStarted, domain.EventMaintenanceCompleted:
 		var p notify.MaintenancePayload
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
-			return Content{}, SMTP{}, fmt.Errorf("email: maintenance payload: %w", err)
+			return Content{}, SMTP{}, false, fmt.Errorf("email: maintenance payload: %w", err)
 		}
 		in.Maintenance = &p
 		in.UnsubscribeURL = w.unsubscribeURL(msg.SubscriberID)
@@ -196,9 +212,10 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, 
 
 	content, err := Render(in)
 	if err != nil {
-		return Content{}, SMTP{}, err
+		return Content{}, SMTP{}, false, err
 	}
-	return content, w.effectiveSMTP(page), nil
+	cfg, custom := w.effectiveSMTP(page)
+	return content, cfg, custom, nil
 }
 
 // unsubscribeURL строит ссылку отписки с HMAC-токеном (пустая при некорректном subscriber_id).
@@ -212,20 +229,22 @@ func (w *Worker) unsubscribeURL(subscriberID string) string {
 	return w.publicURL + "/unsubscribe?token=" + url.QueryEscape(subscription.UnsubscribeToken(w.secret, sid))
 }
 
-// effectiveSMTP выбирает SMTP страницы (если задан её smtp_config), иначе системный.
-func (w *Worker) effectiveSMTP(page domain.StatusPage) SMTP {
+// effectiveSMTP выбирает SMTP страницы (если задан её smtp_config) и признак, что он кастомный,
+// иначе системный SMTP (custom=false). Custom определяет, какой Sender использует вызывающий —
+// см. Worker.senderFor.
+func (w *Worker) effectiveSMTP(page domain.StatusPage) (SMTP, bool) {
 	if len(page.SMTPConfig) > 0 {
 		var c SMTP
 		if err := json.Unmarshal(page.SMTPConfig, &c); err == nil && !c.IsZero() {
 			if c.From == "" && page.FromEmail != nil {
 				c.From = *page.FromEmail
 			}
-			return c
+			return c, true
 		}
 	}
 	cfg := w.systemSMTP
 	if page.FromEmail != nil && *page.FromEmail != "" {
 		cfg.From = *page.FromEmail
 	}
-	return cfg
+	return cfg, false
 }

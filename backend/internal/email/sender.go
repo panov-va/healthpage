@@ -9,11 +9,19 @@ import (
 	"fmt"
 	"log"
 	"mime"
+	"net"
 	"net/smtp"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// dialTimeout — таймаут TCP-подключения к SMTP-серверу. net/smtp.SendMail сам по себе не имеет
+// таймаута и может зависнуть навечно, если порт блокируется файрволом молча (без TCP RST) — найдено
+// на проде 2026-07-22 (VPS-провайдер блокирует исходящий 587/465, соединение висло часами и
+// блокировало обработку всех последующих писем в очереди). Явный net.DialTimeout + ручная передача
+// соединения в smtp.NewClient вместо smtp.SendMail — чтобы недоступность SMTP давала быструю ошибку.
+const dialTimeout = 15 * time.Second
 
 // SMTP — параметры подключения к SMTP-серверу (системному или из smtp_config страницы).
 type SMTP struct {
@@ -61,13 +69,54 @@ func (SMTPSender) Send(_ context.Context, cfg SMTP, msg Email) error {
 	if cfg.TLS {
 		return sendImplicitTLS(addr, cfg.Host, auth, cfg.From, msg.To, raw)
 	}
-	// STARTTLS-путь: net/smtp.SendMail сам поднимает STARTTLS, если сервер его предлагает.
-	return smtp.SendMail(addr, auth, cfg.From, []string{msg.To}, raw)
+	return sendStartTLS(addr, cfg.Host, auth, cfg.From, msg.To, raw)
+}
+
+// sendStartTLS — как net/smtp.SendMail, но с явным таймаутом на TCP-подключение (см. dialTimeout).
+func sendStartTLS(addr, host string, auth smtp.Auth, from, to string, raw []byte) error {
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	if err != nil {
+		return fmt.Errorf("email: dial: %w", err)
+	}
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("email: smtp client: %w", err)
+	}
+	defer func() { _ = c.Close() }()
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+			return fmt.Errorf("email: starttls: %w", err)
+		}
+	}
+	if auth != nil {
+		if err := c.Auth(auth); err != nil {
+			return fmt.Errorf("email: auth: %w", err)
+		}
+	}
+	if err := c.Mail(from); err != nil {
+		return fmt.Errorf("email: mail from: %w", err)
+	}
+	if err := c.Rcpt(to); err != nil {
+		return fmt.Errorf("email: rcpt: %w", err)
+	}
+	wc, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("email: data: %w", err)
+	}
+	if _, err := wc.Write(raw); err != nil {
+		return fmt.Errorf("email: write body: %w", err)
+	}
+	if err := wc.Close(); err != nil {
+		return fmt.Errorf("email: close body: %w", err)
+	}
+	return c.Quit()
 }
 
 // sendImplicitTLS отправляет письмо по каналу с неявным TLS (порт 465).
 func sendImplicitTLS(addr, host string, auth smtp.Auth, from, to string, raw []byte) error {
-	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
+	dialer := &net.Dialer{Timeout: dialTimeout}
+	conn, err := tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12})
 	if err != nil {
 		return fmt.Errorf("email: tls dial: %w", err)
 	}

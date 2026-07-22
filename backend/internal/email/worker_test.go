@@ -80,7 +80,55 @@ func incidentMsg(t *testing.T, status domain.NotificationStatus) ([]byte, *fakeS
 }
 
 func newWorker(st WorkerStore, sender Sender, retrier Retrier) *Worker {
-	return NewWorker(st, sender, retrier, SMTP{}, "https://h", "https://h", "secret", nil)
+	return NewWorker(st, sender, sender, retrier, SMTP{}, "https://h", "https://h", "secret", nil)
+}
+
+// TestEffectiveSMTPCustomVsSystem проверяет, что effectiveSMTP отличает кастомный smtp_config
+// страницы (custom=true) от системного дефолта (custom=false) — от этого зависит, какой Sender
+// вызовет Process/processTransactional (см. senderFor): кастомный всегда идёт через настоящий
+// SMTP-протокол, даже если системный отправитель — UniSender Go API (unisender.go).
+func TestEffectiveSMTPCustomVsSystem(t *testing.T) {
+	w := NewWorker(nil, nil, nil, nil, SMTP{Host: "system.smtp", From: "system@x.test"}, "https://h", "https://h", "secret", nil)
+
+	cfg, custom := w.effectiveSMTP(domain.StatusPage{})
+	if custom {
+		t.Fatalf("страница без smtp_config должна быть custom=false")
+	}
+	if cfg.Host != "system.smtp" {
+		t.Fatalf("ожидался системный SMTP, получили %+v", cfg)
+	}
+
+	own, _ := json.Marshal(SMTP{Host: "client.smtp", From: "client@x.test"})
+	cfg, custom = w.effectiveSMTP(domain.StatusPage{SMTPConfig: own})
+	if !custom {
+		t.Fatalf("страница со своим smtp_config должна быть custom=true")
+	}
+	if cfg.Host != "client.smtp" {
+		t.Fatalf("ожидался SMTP страницы, получили %+v", cfg)
+	}
+}
+
+// TestSenderForDispatchesByCustom проверяет, что Process зовёт customSender для страницы со своим
+// smtp_config и systemSender — для страницы на системном дефолте (два разных фейка, чтобы поймать
+// перепутанный выбор).
+func TestSenderForDispatchesByCustom(t *testing.T) {
+	body, st := incidentMsg(t, domain.NotificationPending)
+	own, _ := json.Marshal(SMTP{Host: "client.smtp", From: "client@x.test"})
+	st.page.SMTPConfig = own
+
+	systemSender := &fakeSender{}
+	customSender := &fakeSender{}
+	w := NewWorker(st, systemSender, customSender, &fakeRetrier{}, SMTP{Host: "system.smtp"}, "https://h", "https://h", "secret", nil)
+
+	if got := w.Process(context.Background(), body); got != Ack {
+		t.Fatalf("Process() = %v, want Ack", got)
+	}
+	if len(customSender.sent) != 1 {
+		t.Fatalf("ожидали 1 письмо через customSender, получили %d (systemSender=%d)", len(customSender.sent), len(systemSender.sent))
+	}
+	if len(systemSender.sent) != 0 {
+		t.Fatalf("systemSender не должен был вызываться для страницы со своим smtp_config")
+	}
 }
 
 // ── тесты ──

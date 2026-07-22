@@ -116,8 +116,9 @@ SQL-запросов (`gen-sqlc`). sqlc локально на macOS требуе
 ### Email (worker-email)
 | Переменная | Назначение |
 |-----------|-----------|
-| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` | дефолтный SMTP сервиса |
-| (кастомный SMTP страницы хранится в БД, не в env) | per-page override |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USERNAME` `SMTP_PASSWORD` `SMTP_FROM` `SMTP_TLS` | дефолтный SMTP сервиса (SMTP_TLS=true → неявный TLS/465, иначе STARTTLS/587) |
+| `UNISENDER_GO_API_KEY` | если задан — системный отправитель шлёт через HTTP Web API UniSender Go (порт 443) вместо SMTP, в приоритете над `SMTP_*`. Решение 2026-07-22: у VPS-провайдера прод-сервера исходящие SMTP-порты (587/465) заблокированы на уровне сети — см. журнал MEMORY.md. Кастомный SMTP страницы (ниже) не затрагивается, всегда идёт настоящим SMTP-протоколом |
+| (кастомный SMTP страницы хранится в БД, не в env) | per-page override — всегда через реальный SMTP, даже если системный отправитель — UniSender Go API |
 
 ### Telegram (worker-telegram)
 | Переменная | Назначение |

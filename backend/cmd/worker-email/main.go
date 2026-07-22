@@ -57,18 +57,29 @@ func main() {
 	defer func() { _ = pub.Close() }()
 	engine := notify.New(st, pub, nil)
 
-	// Отправитель: реальный SMTP, если задан системный хост; иначе лог-заглушка (dev).
 	sysSMTP := email.SMTP{
 		Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername,
 		Password: cfg.SMTPPassword, From: cfg.SMTPFrom, TLS: cfg.SMTPTLS,
 	}
-	var sender email.Sender = email.SMTPSender{}
-	if sysSMTP.IsZero() {
-		log.Println("worker-email: SMTP_HOST не задан — письма логируются (LogSender)")
-		sender = email.LogSender{}
+	// Системный отправитель (дефолт для страниц без своего smtp_config): UniSender Go API в
+	// приоритете, если задан ключ — решение 2026-07-22, когда выяснилось, что у VPS-провайдера
+	// исходящие SMTP-порты (587/465) заблокированы на уровне сети, а HTTPS:443 (Web API) — нет.
+	// Иначе — обычный SMTP, если задан хост; иначе лог-заглушка (dev).
+	var systemSender email.Sender
+	switch {
+	case cfg.UniSenderGoAPIKey != "":
+		systemSender = email.NewUniSenderGoSender(cfg.UniSenderGoAPIKey)
+	case !sysSMTP.IsZero():
+		systemSender = email.SMTPSender{}
+	default:
+		log.Println("worker-email: ни UNISENDER_GO_API_KEY, ни SMTP_HOST не заданы — письма логируются (LogSender)")
+		systemSender = email.LogSender{}
 	}
+	// Кастомный SMTP страницы (4.5, произвольный провайдер клиента) всегда идёт через настоящий
+	// SMTP-протокол — свести чужой почтовый сервер через наш аккаунт UniSender Go нельзя.
+	customSender := email.SMTPSender{}
 
-	worker := email.NewWorker(st, sender, engine, sysSMTP, cfg.PublicURL, cfg.BaseURL, cfg.SubscriptionSecret, nil)
+	worker := email.NewWorker(st, systemSender, customSender, engine, sysSMTP, cfg.PublicURL, cfg.BaseURL, cfg.SubscriptionSecret, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ch, err := conn.Consume(queue.WorkQueue("email"), prefetch, func(d queue.Delivery) {

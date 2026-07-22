@@ -5,7 +5,6 @@ package api
 import (
 	"context"
 	"log"
-	"net"
 	"net/http"
 	"time"
 
@@ -43,7 +42,8 @@ type Deps struct {
 	RefreshTTL      time.Duration    // срок жизни refresh-cookie
 
 	// Кастомные домены (этап 4.3): целевой хост для CNAME и резолвер для верификации.
-	// CNAMEResolver nil → используется net.DefaultResolver.LookupCNAME (тесты инъектируют фейк).
+	// CNAMEResolver nil → резолвер идёт напрямую в публичные DNS (см. dns_resolver.go), в обход
+	// резолвера хоста — тесты инъектируют фейк.
 	CNAMETarget   string
 	CNAMEResolver func(ctx context.Context, host string) (string, error)
 
@@ -75,7 +75,7 @@ type server struct {
 func NewRouter(d Deps) http.Handler {
 	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, publicURL: d.PublicURL, adminURL: d.AdminURL, slackOAuth: d.SlackOAuth, billing: d.Billing, importPublisher: d.ImportPublisher, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver, dokploy: d.Dokploy}
 	if s.cnameResolver == nil {
-		s.cnameResolver = net.DefaultResolver.LookupCNAME
+		s.cnameResolver = newPublicDNSResolver()
 	}
 
 	r := chi.NewRouter()

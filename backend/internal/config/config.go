@@ -54,11 +54,20 @@ type Config struct {
 	ACMERenewInterval time.Duration // период запуска проверки продления
 	ACMERenewBefore   time.Duration // продлевать, если до истечения меньше этого срока
 
-	// Edge-прокси кастомных доменов (этап 4.3.3).
+	// Edge-прокси кастомных доменов (этап 4.3.3). Держим на случай ухода от Dokploy; в прод-деплое
+	// на Dokploy не используется — см. DokployAPIURL и DEPLOY.md.
 	EdgeHTTPAddr  string // адрес :80 (HTTP-01 + redirect)
 	EdgeHTTPSAddr string // адрес :443 (TLS-терминация)
 	EdgeAPIURL    string // origin API для /api/*
 	EdgeSSRURL    string // origin public-ssr для страниц
+
+	// Dokploy API (прод-интеграция кастомных доменов вместо edge/tls-manager, DEPLOY.md): при
+	// верификации CNAME домен подключается как Domain приложения public-ssr — Traefik/Let's
+	// Encrypt дальше обслуживает его сам Dokploy. Пусто (DokployAPIToken) → интеграция выключена,
+	// домен остаётся только verified без реального подключения.
+	DokployAPIURL         string // например http://<host>:3000/api
+	DokployAPIToken       string // API-ключ Dokploy (Settings → Profile → API/CLI Keys)
+	DokployPublicSSRAppID string // ID приложения public-ssr в Dokploy
 
 	// Биллинг (этап 6). Цены — плейсхолдер, финализируются перед запуском (Статусмейт −10%,
 	// DESIGN §10). Суммы в копейках. Боевой провайдер — ЮKassa; без credentials используется
@@ -115,6 +124,10 @@ func Load() Config {
 		EdgeHTTPSAddr: env("EDGE_HTTPS_ADDR", ":443"),
 		EdgeAPIURL:    env("EDGE_API_URL", "http://api:8080"),
 		EdgeSSRURL:    env("EDGE_SSR_URL", "http://public-ssr:3000"),
+
+		DokployAPIURL:         env("DOKPLOY_API_URL", ""),
+		DokployAPIToken:       env("DOKPLOY_API_TOKEN", ""),
+		DokployPublicSSRAppID: env("DOKPLOY_PUBLIC_SSR_APP_ID", ""),
 
 		PremiumMonthlyMinor:      int64(envInt("PREMIUM_MONTHLY_MINOR", 99000)),
 		PremiumYearlyDiscountPct: envInt("PREMIUM_YEARLY_DISCOUNT_PCT", 20),

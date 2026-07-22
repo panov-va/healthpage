@@ -14,7 +14,7 @@ import (
 const createStatusPage = `-- name: CreateStatusPage :one
 INSERT INTO status_pages (account_id, name, description, slug, timezone, default_locale, visibility)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at
+RETURNING id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at, dokploy_domain_id
 `
 
 type CreateStatusPageParams struct {
@@ -60,12 +60,13 @@ func (q *Queries) CreateStatusPage(ctx context.Context, arg CreateStatusPagePara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DokployDomainID,
 	)
 	return i, err
 }
 
 const getStatusPageByID = `-- name: GetStatusPageByID :one
-SELECT id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at FROM status_pages WHERE id = $1 AND deleted_at IS NULL
+SELECT id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at, dokploy_domain_id FROM status_pages WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetStatusPageByID(ctx context.Context, id uuid.UUID) (StatusPage, error) {
@@ -93,12 +94,13 @@ func (q *Queries) GetStatusPageByID(ctx context.Context, id uuid.UUID) (StatusPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DokployDomainID,
 	)
 	return i, err
 }
 
 const getStatusPageBySlug = `-- name: GetStatusPageBySlug :one
-SELECT id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at FROM status_pages WHERE slug = $1 AND deleted_at IS NULL
+SELECT id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at, dokploy_domain_id FROM status_pages WHERE slug = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetStatusPageBySlug(ctx context.Context, slug string) (StatusPage, error) {
@@ -126,12 +128,13 @@ func (q *Queries) GetStatusPageBySlug(ctx context.Context, slug string) (StatusP
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DokployDomainID,
 	)
 	return i, err
 }
 
 const listStatusPagesByAccount = `-- name: ListStatusPagesByAccount :many
-SELECT id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at FROM status_pages
+SELECT id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at, dokploy_domain_id FROM status_pages
 WHERE account_id = $1 AND deleted_at IS NULL
 ORDER BY created_at
 `
@@ -167,6 +170,7 @@ func (q *Queries) ListStatusPagesByAccount(ctx context.Context, accountID uuid.U
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DeletedAt,
+			&i.DokployDomainID,
 		); err != nil {
 			return nil, err
 		}
@@ -179,7 +183,7 @@ func (q *Queries) ListStatusPagesByAccount(ctx context.Context, accountID uuid.U
 }
 
 const setCustomDomain = `-- name: SetCustomDomain :exec
-UPDATE status_pages SET custom_domain = $2, domain_verified = false
+UPDATE status_pages SET custom_domain = $2, domain_verified = false, dokploy_domain_id = NULL
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -188,10 +192,27 @@ type SetCustomDomainParams struct {
 	CustomDomain *string
 }
 
-// Задаёт/снимает собственный домен страницы (этап 4.3) и сбрасывает флаг верификации
-// (домен нужно проверить заново). NULL снимает домен. Уникальность — на уровне индекса.
+// Задаёт/снимает собственный домен страницы (этап 4.3) и сбрасывает флаг верификации (домен
+// нужно проверить заново) и dokploy_domain_id (старая привязка в Dokploy больше не актуальна —
+// отвязывается вызывающим кодом ДО этого запроса). NULL снимает домен. Уникальность — индексом.
 func (q *Queries) SetCustomDomain(ctx context.Context, arg SetCustomDomainParams) error {
 	_, err := q.db.Exec(ctx, setCustomDomain, arg.ID, arg.CustomDomain)
+	return err
+}
+
+const setDokployDomainID = `-- name: SetDokployDomainID :exec
+UPDATE status_pages SET dokploy_domain_id = $2 WHERE id = $1 AND deleted_at IS NULL
+`
+
+type SetDokployDomainIDParams struct {
+	ID              uuid.UUID
+	DokployDomainID *string
+}
+
+// Фиксирует ID домена, созданного в Dokploy (domain.create) для custom_domain страницы —
+// нужен, чтобы позже удалить его через domain.delete при смене/снятии домена.
+func (q *Queries) SetDokployDomainID(ctx context.Context, arg SetDokployDomainIDParams) error {
+	_, err := q.db.Exec(ctx, setDokployDomainID, arg.ID, arg.DokployDomainID)
 	return err
 }
 
@@ -264,7 +285,7 @@ UPDATE status_pages SET
     hide_powered_by = $10,
     redirect_url = $11
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at
+RETURNING id, account_id, name, description, slug, timezone, default_locale, visibility, password_hash, custom_domain, domain_verified, theme, logo_url, favicon_url, hide_powered_by, smtp_config, from_email, redirect_url, created_at, updated_at, deleted_at, dokploy_domain_id
 `
 
 type UpdateStatusPageParams struct {
@@ -318,6 +339,7 @@ func (q *Queries) UpdateStatusPage(ctx context.Context, arg UpdateStatusPagePara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.DokployDomainID,
 	)
 	return i, err
 }

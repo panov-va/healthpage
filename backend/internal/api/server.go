@@ -14,6 +14,7 @@ import (
 
 	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/billing"
+	"github.com/healthpage/backend/internal/dokploy"
 	"github.com/healthpage/backend/internal/domain"
 	"github.com/healthpage/backend/internal/metrics"
 	"github.com/healthpage/backend/internal/notify"
@@ -43,6 +44,11 @@ type Deps struct {
 	// CNAMEResolver nil → используется net.DefaultResolver.LookupCNAME (тесты инъектируют фейк).
 	CNAMETarget   string
 	CNAMEResolver func(ctx context.Context, host string) (string, error)
+
+	// Dokploy — клиент подключения кастомных доменов через Dokploy API (замена edge/tls-manager
+	// в прод-деплое, DEPLOY.md). nil — интеграция не настроена: домен остаётся только verified,
+	// без реального подключения Traefik/Let's Encrypt.
+	Dokploy *dokploy.Client
 }
 
 type server struct {
@@ -58,11 +64,12 @@ type server struct {
 	refreshTTL      time.Duration
 	cnameTarget     string
 	cnameResolver   func(ctx context.Context, host string) (string, error)
+	dokploy         *dokploy.Client
 }
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, billing: d.Billing, importPublisher: d.ImportPublisher, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, billing: d.Billing, importPublisher: d.ImportPublisher, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver, dokploy: d.Dokploy}
 	if s.cnameResolver == nil {
 		s.cnameResolver = net.DefaultResolver.LookupCNAME
 	}

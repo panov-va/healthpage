@@ -71,25 +71,31 @@ RabbitMQ в каталоге managed-БД Dokploy нет — он развора
 
 ## 4. Приложения (Docker image из GHCR)
 
-Для каждого — **Create Application → Provider: Docker (image)**, реестр GHCR (см. §7), тег `:latest`,
-своя вкладка **Environment** и (где нужно) **Domains**. Все приложения — в одном проекте Dokploy,
-чтобы были в общей сети и видели друг друга по внутренним именам.
+Для каждого — **Create Application**, затем на вкладке **General** выбрать источник **Docker**
+(один из табов рядом с GitHub/GitLab/Bitbucket/Gitea/Git/Drop — НЕ Nixpacks/Build Type, это для
+сборки из исходников и здесь не используется). В открывшейся форме — поле **Docker Image**
+(`ghcr.io/<owner>/healthpage-...:latest`) и опционально **Registry URL / Username / Password**
+(авторизация GHCR — см. §7, можно оставить пустыми, если сервер уже авторизован через `docker login`).
+Плюс своя вкладка **Environment** и (где нужно) **Domains**. Все приложения — в одном проекте
+Dokploy, чтобы были в общей сети и видели друг друга по внутренним именам.
 
 | Приложение | Образ (`${REGISTRY}` = `ghcr.io/<owner>`) | Домен (Traefik) | Особое |
 |-----------|-------------------------------------------|-----------------|--------|
 | `rabbitmq` | `${REGISTRY}/healthpage-rabbitmq:latest` | — | внутр.; env RABBITMQ_DEFAULT_USER/PASS |
-| `api` | `${REGISTRY}/healthpage-backend:latest` | `api.healthpage.ru` + `app.healthpage.ru` path `/api` | **Pre-Deploy: миграции** (§6); порт 8080 |
-| `worker-email` | `…/healthpage-backend:latest` | — | **command/entrypoint override:** `/app/worker-email` |
-| `worker-telegram` | `…/healthpage-backend:latest` | — | override `/app/worker-telegram` (нужен TELEGRAM_BOT_TOKEN) |
-| `worker-webhook` | `…/healthpage-backend:latest` | — | override `/app/worker-webhook` |
-| `worker-billing` | `…/healthpage-backend:latest` | — | override `/app/worker-billing` |
-| `worker-import` | `…/healthpage-backend:latest` | — | override `/app/worker-import` |
+| `api` | `${REGISTRY}/healthpage-backend:latest` | `api.healthpage.ru` + `app.healthpage.ru` path `/api` | миграции — отдельным one-off приложением (§6); порт 8080 |
+| `worker-email` | `…/healthpage-backend:latest` | — | **Command** (Advanced → General): `/app/worker-email` |
+| `worker-telegram` | `…/healthpage-backend:latest` | — | Command `/app/worker-telegram` (нужен TELEGRAM_BOT_TOKEN) |
+| `worker-webhook` | `…/healthpage-backend:latest` | — | Command `/app/worker-webhook` |
+| `worker-billing` | `…/healthpage-backend:latest` | — | Command `/app/worker-billing` |
+| `worker-import` | `…/healthpage-backend:latest` | — | Command `/app/worker-import` |
 | `public-ssr` | `${REGISTRY}/healthpage-public-ssr:latest` | `healthpage.ru`, `www.healthpage.ru` | порт 3000 |
 | `admin` | `${REGISTRY}/healthpage-admin:latest` | `app.healthpage.ru` (path `/`) | порт 80 (nginx) |
 
 > **Один образ `healthpage-backend` — семь приложений** (api + 6 воркеров), различаются только
-> командой запуска (Docker Command / Entrypoint override = `/app/worker-...`; у api — дефолт `/app/api`).
-> Образ distroless (без shell) — override задавать **массивом** (`/app/worker-email`), не `sh -c`.
+> полем **Command** на вкладке **Advanced → General** (проверено по исходникам Dokploy: это поле
+> маппится в `ContainerSpec.Command`, т.е. **заменяет** ENTRYPOINT образа, а не дописывается к нему).
+> У `api` поле Command оставить пустым (дефолтный ENTRYPOINT `/app/api`). Значение вида
+> `/app/worker-email` (без пробелов) достаточно — Dokploy сам разобьёт строку на массив.
 
 ---
 
@@ -132,14 +138,16 @@ Traefik в Dokploy выпускает TLS (Let's Encrypt) автоматичес
   добавить домен с указанием path; Traefik разрулит `app.*/api/*`→api, `app.*/*`→admin.)
 - `/metrics` наружу не публикуем (Prometheus скрейпит api по внутренней сети, §10).
 
-### Миграции (Pre-Deploy)
-Схема применяется **до** старта нового api. Варианты (по возможностям версии Dokploy):
-- **Pre-Deploy command** у приложения `api`: команда `/app/migrate up` (образ distroless — задать как
-  бинарь с аргументом, без `sh -c`). Dokploy выполнит её на новом образе перед переключением.
-- Если Pre-Deploy недоступен/оборачивает в shell — сделать отдельное **one-off приложение**
-  `healthpage-migrate` (тот же образ, entrypoint `/app/migrate`, command `up`) и запускать его вручную
-  при деплое с миграцией (схема меняется редко). Топологию RabbitMQ объявить **один раз** тем же
-  способом: one-off `queue-setup` (entrypoint `/app/queue-setup`), идемпотентно.
+### Миграции — one-off приложения (в Dokploy нет хука «Pre-Deploy command»)
+Проверено по исходникам Dokploy: отдельного «pre-deploy»-шага перед стартом контейнера там нет
+(есть только «Run Command» — выполнение команды в уже запущенном контейнере, для отладки, и
+«Schedules» — команда по cron). Миграции — это **отдельное одноразовое приложение**:
+- Создать приложение `migrate`: источник **Docker**, тот же образ `${REGISTRY}/healthpage-backend:latest`,
+  на вкладке **Advanced → General → Command** указать `/app/migrate up`. Env — только `DATABASE_URL`.
+  Домен не нужен. Перед каждым релизом со сменой схемы — **Deploy** (или Redeploy) этого приложения
+  вручную; миграции идемпотентны (goose), схема меняется редко.
+- Топологию RabbitMQ — так же: приложение `queue-setup`, Command `/app/queue-setup`, env
+  `RABBITMQ_URL`, один раз (идемпотентно, повторные запуски безвредны).
 
 ---
 
@@ -151,8 +159,15 @@ Traefik в Dokploy выпускает TLS (Let's Encrypt) автоматичес
    deploy-вебхуки Dokploy** (POST на каждый URL) → Dokploy тянет `:latest` и передеплоивает.
 
 **Что настроить:**
-- **Доступ Dokploy к GHCR:** в Dokploy → Registry добавить `ghcr.io` с логином GitHub и **PAT с
-  `read:packages`** (образы приватного репозитория). Либо сделать пакеты публичными.
+- **Доступ к приватным GHCR-образам** — два равноценных варианта (Dokploy `Settings → Registry` для
+  этого НЕ подходит: тот каталог — для регистри, куда Dokploy сам пушит собранные образы, к pull'у
+  готовых образов отношения не имеет):
+  1. **На каждом приложении** (вкладка Docker) заполнить Registry URL=`ghcr.io`, Username=GitHub-логин,
+     Password=PAT с `read:packages` — Dokploy сам сделает `docker login` перед `pull`.
+  2. **Один раз на сервере**: `docker login ghcr.io -u <логин> -p <PAT>` (по SSH, от имени пользователя,
+     под которым Dokploy дёргает Docker) — тогда поля Username/Password в приложениях можно оставить
+     пустыми, `docker pull` сработает по сохранённым в Docker credentials на хосте.
+  Либо сделать пакеты публичными в GitHub Packages — тогда авторизация не нужна вовсе.
 - **Вебхуки приложений:** у каждого приложения в Dokploy включить Auto-Deploy / получить Deploy Webhook
   URL. Собрать URL всех приложений, которые надо обновлять на релизе (api + 6 воркеров + 2 фронта +
   rabbitmq по необходимости), в **GitHub Secret `DOKPLOY_WEBHOOKS`** (через пробел/перенос строки).
@@ -172,10 +187,24 @@ Traefik в Dokploy выпускает TLS (Let's Encrypt) автоматичес
   периодически проверять восстановление. Redis/RabbitMQ — не критичны.
 - **Мониторинг (7.3):** `api` отдаёт `/metrics` (внутр. сеть). Dokploy даёт логи/базовые метрики
   контейнеров в UI; для дашбордов — Prometheus+Grafana поверх (скрейп api по внутреннему хосту).
-- **Кастомные домены клиентов (edge/tls-manager):** `edge` слушает :443 и конфликтует с Traefik.
-  **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** предпочтительно перевести их на **Traefik
-  on-demand TLS** (динамический выпуск для домена клиента после проверки допустимости) вместо
-  edge/tls-manager, раз Traefik уже стоит. Решить перед включением.
+- **Кастомные домены клиентов — решено (2026-07-22):** свой `cmd/edge`+`cmd/tls-manager` в проде
+  на Dokploy **не используется** (конфликтовал бы с Traefik на :80/:443 на той же машине). Вместо
+  этого при успешной верификации CNAME (`POST /pages/{id}/domain/verify`) бэкенд сам вызывает
+  Dokploy API (`POST /domain.create` с `applicationId` приложения `public-ssr`, `port:3000`,
+  `https:true`, `certificateType:letsencrypt`) — дальше Traefik и Let's Encrypt обслуживает домен
+  клиента сам Dokploy. При смене/снятии домена бэкенд аналогично вызывает `POST /domain.delete`.
+  Реализация — `backend/internal/dokploy` (клиент), подключается через `POST /pages/{id}` →
+  `handleVerifyDomain` (`backend/internal/api/page_domain.go`).
+  - **Настройка:** Dokploy → Profile → API/CLI Keys → Generate New Key. Прописать в env `api`:
+    `DOKPLOY_API_URL` (`http://<host>:3000/api`), `DOKPLOY_API_TOKEN` (сам ключ, вписывается
+    вручную человеком — не через агента), `DOKPLOY_PUBLIC_SSR_APP_ID` (ID приложения `public-ssr`
+    в Dokploy, виден в URL его страницы). Без `DOKPLOY_API_TOKEN` домен остаётся только
+    `domain_verified=true` без реального подключения (не ошибка, просто интеграция выключена).
+  - `cmd/edge`/`cmd/tls-manager` код в репозитории оставлен (на случай ухода с Dokploy), но не
+    входит в прод-деплой.
+  - Не проверено на реальном клиентском домене (только юнит+интеграционные тесты с фейковым
+    Dokploy API) — стоит один раз проверить на тестовом поддомене перед тем, как включать фичу
+    платным клиентам.
 
 ---
 

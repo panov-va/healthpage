@@ -36,6 +36,22 @@ func (s *server) handleVerifyDomain(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Подключение в Dokploy (замена edge/tls-manager в проде, DEPLOY.md): при первой успешной
+	// верификации связываем домен с приложением public-ssr — дальше Traefik/Let's Encrypt
+	// обслуживает его сам Dokploy. dokploy=nil — интеграция не настроена, домен остаётся только
+	// verified. DokployDomainID уже задан — домен уже подключён, повторно не создаём (idempotent).
+	if verified && s.dokploy != nil && page.DokployDomainID == nil {
+		domainID, err := s.dokploy.CreateDomain(r.Context(), *page.CustomDomain)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, "dokploy_error", "домен верифицирован, но не удалось подключить его в инфраструктуре — попробуйте ещё раз")
+			return
+		}
+		if err := s.store.SetDokployDomainID(r.Context(), page.ID, &domainID); err != nil {
+			writeServerError(w, err)
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, domainStatusResponse{
 		CustomDomain:   page.CustomDomain,
 		DomainVerified: verified,

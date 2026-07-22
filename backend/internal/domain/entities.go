@@ -99,27 +99,28 @@ func (v Visibility) IsValid() bool { return v == VisibilityPublic || v == Visibi
 
 // StatusPage — публичная страница статуса продукта.
 type StatusPage struct {
-	ID             uuid.UUID
-	AccountID      uuid.UUID
-	Name           string
-	Description    string
-	Slug           string
-	Timezone       string
-	DefaultLocale  string
-	Visibility     Visibility
-	PasswordHash   *string
-	CustomDomain   *string
-	DomainVerified bool
-	Theme          []byte // jsonb: colors, layout, dark_mode
-	LogoURL        *string
-	FaviconURL     *string
-	HidePoweredBy  bool
-	SMTPConfig     []byte // jsonb, nullable
-	FromEmail      *string
-	RedirectURL    *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DeletedAt      *time.Time
+	ID              uuid.UUID
+	AccountID       uuid.UUID
+	Name            string
+	Description     string
+	Slug            string
+	Timezone        string
+	DefaultLocale   string
+	Visibility      Visibility
+	PasswordHash    *string
+	CustomDomain    *string
+	DomainVerified  bool
+	DokployDomainID *string // ID домена в Dokploy (domain.create) для отвязки при смене/снятии
+	Theme           []byte  // jsonb: colors, layout, dark_mode
+	LogoURL         *string
+	FaviconURL      *string
+	HidePoweredBy   bool
+	SMTPConfig      []byte // jsonb, nullable
+	FromEmail       *string
+	RedirectURL     *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DeletedAt       *time.Time
 }
 
 // AllowedEmail — адрес из списка доступа приватной страницы (этап 4.2.1, magic-link).

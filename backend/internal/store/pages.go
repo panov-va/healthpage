@@ -129,6 +129,15 @@ func (s *Store) SetDomainVerified(ctx context.Context, id uuid.UUID, verified bo
 	return nil
 }
 
+// SetDokployDomainID фиксирует ID домена, созданного в Dokploy для custom_domain страницы
+// (nil — домен в Dokploy не подключён/отвязан).
+func (s *Store) SetDokployDomainID(ctx context.Context, id uuid.UUID, dokployDomainID *string) error {
+	if err := s.q.SetDokployDomainID(ctx, db.SetDokployDomainIDParams{ID: id, DokployDomainID: dokployDomainID}); err != nil {
+		return fmt.Errorf("store: set dokploy domain id: %w", err)
+	}
+	return nil
+}
+
 // SetStatusPageSMTP задаёт/снимает кастомный SMTP и адрес отправителя (этап 4.5). nil снимает.
 func (s *Store) SetStatusPageSMTP(ctx context.Context, id uuid.UUID, smtpConfig []byte, fromEmail *string) error {
 	if err := s.q.SetStatusPageSMTP(ctx, db.SetStatusPageSMTPParams{
@@ -159,26 +168,27 @@ func (s *Store) SoftDeleteStatusPage(ctx context.Context, id uuid.UUID) error {
 
 func mapStatusPage(p db.StatusPage) domain.StatusPage {
 	return domain.StatusPage{
-		ID:             p.ID,
-		AccountID:      p.AccountID,
-		Name:           p.Name,
-		Description:    p.Description,
-		Slug:           p.Slug,
-		Timezone:       p.Timezone,
-		DefaultLocale:  p.DefaultLocale,
-		Visibility:     domain.Visibility(p.Visibility),
-		PasswordHash:   p.PasswordHash,
-		CustomDomain:   p.CustomDomain,
-		DomainVerified: p.DomainVerified,
-		Theme:          p.Theme,
-		LogoURL:        p.LogoUrl,
-		FaviconURL:     p.FaviconUrl,
-		HidePoweredBy:  p.HidePoweredBy,
-		SMTPConfig:     p.SmtpConfig,
-		FromEmail:      p.FromEmail,
-		RedirectURL:    p.RedirectUrl,
-		CreatedAt:      p.CreatedAt,
-		UpdatedAt:      p.UpdatedAt,
-		DeletedAt:      p.DeletedAt,
+		ID:              p.ID,
+		AccountID:       p.AccountID,
+		Name:            p.Name,
+		Description:     p.Description,
+		Slug:            p.Slug,
+		Timezone:        p.Timezone,
+		DefaultLocale:   p.DefaultLocale,
+		Visibility:      domain.Visibility(p.Visibility),
+		PasswordHash:    p.PasswordHash,
+		CustomDomain:    p.CustomDomain,
+		DomainVerified:  p.DomainVerified,
+		DokployDomainID: p.DokployDomainID,
+		Theme:           p.Theme,
+		LogoURL:         p.LogoUrl,
+		FaviconURL:      p.FaviconUrl,
+		HidePoweredBy:   p.HidePoweredBy,
+		SMTPConfig:      p.SmtpConfig,
+		FromEmail:       p.FromEmail,
+		RedirectURL:     p.RedirectUrl,
+		CreatedAt:       p.CreatedAt,
+		UpdatedAt:       p.UpdatedAt,
+		DeletedAt:       p.DeletedAt,
 	}
 }

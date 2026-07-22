@@ -34,21 +34,39 @@ admin+public-ssr «Релизы»); 7.3 **только `/metrics`** (Prometheus,
 решение человека); 7.9 UI импорта. Добавлен `worker-import`, зависимость `prometheus/client_golang`.
 **Отложено (решения человека):** 7.4 бэкапы + Grafana/вывод статуса/собственная статус-страница — прод;
 7.7 Instatus / 7.8 Статусмейт — позже; inbound generic/pagerduty webhook'и (501, этап 5); боевая ЮKassa.
-**Деплой/CI-CD (решения человека, 2026-07-01):** self-hosted **Dokploy** на РФ-VPS; отдельные
-приложения + managed Postgres/Redis Dokploy (бэкапы → 7.4); RabbitMQ — приложение; образы CI→GHCR,
-Dokploy тянет по вебхуку; ingress/TLS — Traefik. Полный runbook — **`DEPLOY.md`** (compose+Caddy+SSH —
-Приложение B, ручная альтернатива). CD: `.github/workflows/deploy.yml` (build+push GHCR + вебхуки).
-Провайдер РФ — [РЕШИТЬ]; сервер у человека есть. Следующий шаг — установка Dokploy по DEPLOY.md.
+**Деплой/CI-CD (решения человека, 2026-07-01):** self-hosted **Dokploy** на РФ-VPS (`201.51.12.191`);
+отдельные приложения + managed Postgres/Redis Dokploy (бэкапы → 7.4); RabbitMQ — приложение; образы
+CI→GHCR, Dokploy тянет по вебхуку; ingress/TLS — Traefik. Полный runbook — **`DEPLOY.md`** (compose+
+Caddy+SSH — Приложение B, ручная альтернатива). CD: `.github/workflows/deploy.yml` (build+push GHCR +
+вебхуки). Провайдер РФ — [РЕШИТЬ]; сервер у человека есть.
+**Прод развёрнут и работает (2026-07-21/22):** все сервисы, кроме `worker-telegram` (нет
+`TELEGRAM_BOT_TOKEN`, оставлен недеплоенным), задеплоены в Dokploy и подтверждены живыми логами:
+`migrate` (схема на версии 15), `queue-setup` (топология RabbitMQ объявлена), `api`, `worker-email`
+(dev-режим — SMTP не задан, письма логируются), `worker-webhook`, `worker-billing` (dev-режим — ключи
+ЮKassa не заданы, stub-провайдер), `worker-import`, `public-ssr`, `admin`. Домены с HTTPS/Let's Encrypt
+живые: `healthpage.ru`+`www` (public-ssr), `app.healthpage.ru` (admin + `/api`→api), `api.healthpage.ru`
+(api). **Демо-страница:** лендинг ссылается на `/status/demo` — создана вручную через API (аккаунт
+`demo@healthpage.ru` + status page slug `demo` + 3 компонента); готового seed-скрипта в репозитории
+нет, при пересоздании БД демо-страницу нужно создавать заново тем же способом (`POST /auth/register`
+→ `POST /pages` со slug `demo` → `POST /components` ×N). Пароль демо-аккаунта не хранится в репо —
+только у человека.
 **Следующий шаг (код):** коммит человеком; затем прод-подготовка (стоп-маркеры ниже) ИЛИ 7.7/7.8/бэкапы по приоритету.
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ ИМПОРТА]:** схема StatusPal API v2 (`internal/importer/statuspal.go`) — по
 докам, сверить на живом ключе (прод); 152-ФЗ — импортированные email `confirmed=false` (opt-in).
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ БИЛЛИНГА]:** реальные ключи ЮKassa, согласование рекуррентов с менеджером,
 боевые списания и фискальные чеки локально НЕ проверены; цены — плейсхолдер; оферта — черновик.
-**[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ КАСТОМНЫХ ДОМЕНОВ]:** реальный выпуск TLS (4.3.2) и HTTPS-доступ по
-домену (4.3.3) **локально не проверены** — нужен прод-деплой (публичный DNS, открытые :80/:443,
-выпуск Let's Encrypt). edge/tls-manager в compose под профилем `edge` (не стартуют в dev).
+**Кастомные домены (4.3) — стоп-маркер снят (2026-07-22), решение человека:** свой edge/tls-manager
+в проде на Dokploy не используется (конфликт :80/:443 с Traefik). Вместо этого `POST /pages/{id}/
+domain/verify` при успешной CNAME-проверке сам вызывает Dokploy API (`domain.create`/`domain.delete`
+на приложение `public-ssr`) — Traefik+Let's Encrypt обслуживает домен клиента сам Dokploy. Новый
+пакет `backend/internal/dokploy` + миграция 00016 (`status_pages.dokploy_domain_id`). Требует env
+`api`: `DOKPLOY_API_URL`, `DOKPLOY_API_TOKEN` (ключ из Dokploy Profile→API/CLI Keys, вписывается
+человеком), `DOKPLOY_PUBLIC_SSR_APP_ID`. Без токена — фича молча выключена (домен остаётся только
+verified). **Не проверено на реальном клиентском домене** (только юнит+интеграционные тесты с
+фейковым Dokploy API) — проверить на тестовом поддомене перед тем, как отдавать фичу платным
+клиентам. `cmd/edge`/`cmd/tls-manager` оставлены в репозитории, но не деплоятся.
 Организационно осталось: для 3.7 — `TELEGRAM_BOT_TOKEN` у @BotFather; для 3.9 — Slack App +
-`SLACK_CLIENT_ID/SECRET`; для 4.3 — публичный хост edge (`CNAME_TARGET`), `ACME_EMAIL`.
+`SLACK_CLIENT_ID/SECRET`; для 4.3 — `DOKPLOY_API_TOKEN`/`DOKPLOY_PUBLIC_SSR_APP_ID` (выше).
 **Прод:** `SUBSCRIPTION_SECRET` api ↔ воркеры должны совпадать (им же подписываются токены доступа к
 приватным страницам 4.2 и magic-link 4.2.1).
 
@@ -1529,3 +1547,26 @@ _Этап 0 — завершён и закоммичен._
   триггер вебхуков Dokploy), **DEPLOY.md** (полный runbook Dokploy). Провайдер РФ — [РЕШИТЬ]; сервер у
   человека есть. Провалидировано (compose config, Caddy validate, actionlint, сборка образов фронтов).
   Дальше — практическая установка Dokploy по DEPLOY.md.
+- 2026-07-21/22 — **Прод развёрнут.** Через claude-in-chrome настроены и продеплоены в Dokploy:
+  исправлен source type (был ошибочно nixpacks/GitHub у части приложений → Docker), Command-override
+  для api+5 воркеров, домены (healthpage.ru+www→public-ssr:3000, app.healthpage.ru→admin:80+/api→
+  api:8080, api.healthpage.ru→api:8080) с HTTPS/Let's Encrypt, 2 новых one-off приложения (`migrate`,
+  `queue-setup`). Задеплоены по порядку migrate→queue-setup→api→(public-ssr,admin,worker-email,
+  worker-webhook,worker-billing,worker-import); все живы по логам. `worker-telegram` оставлен
+  недеплоенным (нет токена). Найден и исправлен баг: обе ссылки лендинга ведут на `/status/demo`,
+  которой не было в чистой БД (404) — создана демо-страница вручную через API (нет seed-механизма в
+  коде, зафиксировано в «Текущий статус» как TODO на будущее). Дальше — по приоритету человека: SMTP
+  для worker-email, TELEGRAM_BOT_TOKEN, боевые ключи ЮKassa, либо возврат к стоп-маркерам биллинга/
+  импорта/кастомных доменов.
+- 2026-07-22 — **Стоп-маркер «кастомные домены» (4.3) снят.** Развилка решена человеком: вместо
+  своего edge/tls-manager (конфликтует с Traefik на Dokploy) — интеграция с Dokploy API. Новый
+  пакет `internal/dokploy` (CreateDomain/DeleteDomain, x-api-key, fallback на byApplicationId при
+  нестабильной схеме ответа create — обнаружено через Swagger Dokploy, ответы `{}`-untyped).
+  Миграция 00016 (`dokploy_domain_id`), sqlc-запрос `SetDokployDomainID`. `handleVerifyDomain`
+  подключает домен при первой успешной верификации (idempotent); `handlePatchPage` отвязывает
+  старый при смене/снятии (best-effort, не блокирует операцию при ошибке Dokploy). Контракт
+  openapi.yaml НЕ менялся. Юнит-тесты клиента (httptest) + новый интеграционный тест на PG16
+  (create/idempotent/delete через фейковый Dokploy-сервер) PASS; build/vet/lint + полный `go test
+  ./...` зелёные. Не проверено на реальном клиентском домене — сделать перед стартом продаж
+  white-label. DEPLOY.md §8 переписан (инструкция по `DOKPLOY_API_TOKEN`/`DOKPLOY_PUBLIC_SSR_APP_ID`).
+  `cmd/edge`/`cmd/tls-manager` остаются в репо неиспользуемыми. Дальше — по приоритету человека.

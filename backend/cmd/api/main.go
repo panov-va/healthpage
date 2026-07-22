@@ -17,6 +17,7 @@ import (
 	"github.com/healthpage/backend/internal/auth"
 	"github.com/healthpage/backend/internal/billing"
 	"github.com/healthpage/backend/internal/config"
+	"github.com/healthpage/backend/internal/dokploy"
 	"github.com/healthpage/backend/internal/notify"
 	"github.com/healthpage/backend/internal/queue"
 	"github.com/healthpage/backend/internal/security"
@@ -60,6 +61,10 @@ func main() {
 	// Slack OAuth — опционально: без SLACK_CLIENT_ID/SECRET эндпоинты подписки Slack отвечают 404.
 	slackOAuth := setupSlackOAuth(cfg)
 
+	// Dokploy API — опционально: без DOKPLOY_API_TOKEN кастомные домены остаются только verified,
+	// без реального подключения Traefik/Let's Encrypt (см. DEPLOY.md).
+	dokployClient := setupDokploy(cfg)
+
 	// Биллинг (этап 6): провайдер ЮKassa при наличии ключей, иначе stub (dev).
 	billingSvc := setupBilling(cfg, st)
 
@@ -85,6 +90,7 @@ func main() {
 			Prod:            cfg.IsProd(),
 			RefreshTTL:      cfg.RefreshTTL,
 			CNAMETarget:     cfg.CNAMETarget,
+			Dokploy:         dokployClient,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -147,6 +153,16 @@ func setupSlackOAuth(cfg config.Config) *slack.OAuth {
 	redirectURI := cfg.BaseURL + "/api/v1/subscribe/slack/callback"
 	log.Printf("slack: OAuth подписка включена (redirect_uri=%s)", redirectURI)
 	return slack.NewOAuth(cfg.SlackClientID, cfg.SlackClientSecret, redirectURI, nil)
+}
+
+// setupDokploy собирает клиент Dokploy API, если задан токен. Пусто → nil (кастомные домены
+// остаются только verified, без реального подключения — см. DEPLOY.md).
+func setupDokploy(cfg config.Config) *dokploy.Client {
+	if cfg.DokployAPIToken == "" {
+		log.Println("dokploy: DOKPLOY_API_TOKEN не задан — подключение кастомных доменов отключено")
+		return nil
+	}
+	return dokploy.NewClient(cfg.DokployAPIURL, cfg.DokployAPIToken, cfg.DokployPublicSSRAppID, nil)
 }
 
 // setupBilling собирает сервис биллинга: провайдер ЮKassa при наличии ключей, иначе stub (dev).

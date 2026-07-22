@@ -30,14 +30,20 @@ WHERE id = $1 AND deleted_at IS NULL
 RETURNING *;
 
 -- name: SetCustomDomain :exec
--- Задаёт/снимает собственный домен страницы (этап 4.3) и сбрасывает флаг верификации
--- (домен нужно проверить заново). NULL снимает домен. Уникальность — на уровне индекса.
-UPDATE status_pages SET custom_domain = $2, domain_verified = false
+-- Задаёт/снимает собственный домен страницы (этап 4.3) и сбрасывает флаг верификации (домен
+-- нужно проверить заново) и dokploy_domain_id (старая привязка в Dokploy больше не актуальна —
+-- отвязывается вызывающим кодом ДО этого запроса). NULL снимает домен. Уникальность — индексом.
+UPDATE status_pages SET custom_domain = $2, domain_verified = false, dokploy_domain_id = NULL
 WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: SetDomainVerified :exec
 -- Отмечает результат проверки CNAME (этап 4.3).
 UPDATE status_pages SET domain_verified = $2 WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: SetDokployDomainID :exec
+-- Фиксирует ID домена, созданного в Dokploy (domain.create) для custom_domain страницы —
+-- нужен, чтобы позже удалить его через domain.delete при смене/снятии домена.
+UPDATE status_pages SET dokploy_domain_id = $2 WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: SetStatusPageSMTP :exec
 -- Задаёт/снимает кастомный SMTP и адрес отправителя страницы (этап 4.5). NULL — снять.

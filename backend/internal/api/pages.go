@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -241,6 +242,13 @@ func (s *server) handlePatchPage(w http.ResponseWriter, r *http.Request) {
 		domain, ok := parseCustomDomain(w, req.CustomDomain)
 		if !ok {
 			return
+		}
+		// Старый домен снимается/меняется — отвязываем его в Dokploy (best-effort: ошибка тут не
+		// должна блокировать смену домена оператором, только пишем в лог).
+		if page.DokployDomainID != nil && s.dokploy != nil {
+			if err := s.dokploy.DeleteDomain(r.Context(), *page.DokployDomainID); err != nil {
+				log.Printf("dokploy: delete domain %s (page %s): %v", *page.DokployDomainID, page.ID, err)
+			}
 		}
 		if err := s.store.SetCustomDomain(r.Context(), updated.ID, domain); err != nil {
 			if errors.Is(err, store.ErrDomainTaken) {

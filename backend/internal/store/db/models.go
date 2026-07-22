@@ -492,27 +492,28 @@ type RefreshToken struct {
 }
 
 type StatusPage struct {
-	ID             uuid.UUID
-	AccountID      uuid.UUID
-	Name           string
-	Description    string
-	Slug           string
-	Timezone       string
-	DefaultLocale  string
-	Visibility     string
-	PasswordHash   *string
-	CustomDomain   *string
-	DomainVerified bool
-	Theme          []byte
-	LogoUrl        *string
-	FaviconUrl     *string
-	HidePoweredBy  bool
-	SmtpConfig     []byte
-	FromEmail      *string
-	RedirectUrl    *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	DeletedAt      *time.Time
+	ID              uuid.UUID
+	AccountID       uuid.UUID
+	Name            string
+	Description     string
+	Slug            string
+	Timezone        string
+	DefaultLocale   string
+	Visibility      string
+	PasswordHash    *string
+	CustomDomain    *string
+	DomainVerified  bool
+	Theme           []byte
+	LogoUrl         *string
+	FaviconUrl      *string
+	HidePoweredBy   bool
+	SmtpConfig      []byte
+	FromEmail       *string
+	RedirectUrl     *string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DeletedAt       *time.Time
+	DokployDomainID *string
 }
 
 type Subscriber struct {

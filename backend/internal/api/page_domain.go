@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"net/http"
 	"strings"
 )
@@ -43,6 +44,7 @@ func (s *server) handleVerifyDomain(w http.ResponseWriter, r *http.Request) {
 	if verified && s.dokploy != nil && page.DokployDomainID == nil {
 		domainID, err := s.dokploy.CreateDomain(r.Context(), *page.CustomDomain)
 		if err != nil {
+			log.Printf("dokploy: create domain %q (page %s): %v", *page.CustomDomain, page.ID, err)
 			writeError(w, http.StatusBadGateway, "dokploy_error", "домен верифицирован, но не удалось подключить его в инфраструктуре — попробуйте ещё раз")
 			return
 		}

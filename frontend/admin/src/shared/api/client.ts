@@ -104,7 +104,8 @@ async function parseError(res: Response): Promise<HttpError> {
   return new HttpError(res.status, code, message);
 }
 
-// request — основной метод. Возвращает распарсенный JSON (или undefined для 204).
+// request — основной метод. Возвращает распарсенный JSON (или undefined для пустого тела —
+// 204, либо 202 у некоторых эндпоинтов вроде /billing/webhook/{provider}).
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   let res = await rawFetch(path, opts);
 
@@ -117,7 +118,8 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 
   if (!res.ok) throw await parseError(res);
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {

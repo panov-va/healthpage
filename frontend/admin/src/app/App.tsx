@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { SessionProvider, useSession } from "@/entities/session";
-import { BillingPage } from "@/pages/billing";
+import { BillingPage, StubConfirmPage } from "@/pages/billing";
 import { ChangelogPage } from "@/pages/changelog";
 import { ImportPage } from "@/pages/import";
 import { IncidentDetailPage, IncidentsListPage } from "@/pages/incidents";
@@ -30,6 +30,8 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginRoute />} />
+          {/* Колбэк dev-провайдера оплаты (stub) — вне RequireAuth: сессия могла истечь. */}
+          <Route path="/billing/stub-confirm" element={<StubConfirmPage />} />
           <Route
             element={
               <RequireAuth>

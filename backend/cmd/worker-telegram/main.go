@@ -68,7 +68,7 @@ func main() {
 	}
 	log.Printf("worker-telegram: бот @%s авторизован", me.Username)
 
-	worker := telegram.NewWorker(st, client, engine, cfg.BaseURL, nil)
+	worker := telegram.NewWorker(st, client, engine, cfg.PublicURL, nil)
 	bot := telegram.NewBot(client, st, 30, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())

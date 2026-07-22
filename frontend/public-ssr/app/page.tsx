@@ -28,6 +28,10 @@ function Check({ on }: { on: boolean }) {
   );
 }
 
+// URL админки (регистрация оператора) — отдельный SPA-сервис, поэтому абсолютный URL, не путь
+// внутри public-ssr. ADMIN_URL задаётся окружением; дефолт — прод-домен админки.
+const adminURL = process.env.ADMIN_URL ?? "https://app.healthpage.ru";
+
 export default function LandingPage({ searchParams }: LandingProps) {
   const locale = resolveLocale(searchParams.lang);
   const t = landing(locale);
@@ -39,7 +43,7 @@ export default function LandingPage({ searchParams }: LandingProps) {
         <h1>{t.heroTitle}</h1>
         <p>{t.heroSubtitle}</p>
         <div className="cta">
-          <a className="btn btn-primary" href={`/status/demo${langQuery}`}>
+          <a className="btn btn-primary" href={`${adminURL}/login?mode=register`}>
             {t.ctaPrimary}
           </a>
           <a className="btn btn-secondary" href={`/status/demo${langQuery}`}>

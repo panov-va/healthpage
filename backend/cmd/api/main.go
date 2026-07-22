@@ -84,6 +84,8 @@ func main() {
 			Notifier:        notifier,
 			SubSecret:       cfg.SubscriptionSecret,
 			BaseURL:         cfg.BaseURL,
+			PublicURL:       cfg.PublicURL,
+			AdminURL:        cfg.AdminURL,
 			SlackOAuth:      slackOAuth,
 			Billing:         billingSvc,
 			ImportPublisher: importPublisher,
@@ -168,7 +170,7 @@ func setupDokploy(cfg config.Config) *dokploy.Client {
 // setupBilling собирает сервис биллинга: провайдер ЮKassa при наличии ключей, иначе stub (dev).
 // Цены — плейсхолдер из конфига (финализируются перед запуском, DESIGN §10).
 func setupBilling(cfg config.Config, st *store.Store) *billing.Service {
-	provider := billing.SelectProvider(cfg.YooKassaShopID, cfg.YooKassaSecretKey, cfg.BaseURL)
+	provider := billing.SelectProvider(cfg.YooKassaShopID, cfg.YooKassaSecretKey, cfg.AdminURL)
 	if cfg.YooKassaShopID == "" || cfg.YooKassaSecretKey == "" {
 		log.Println("billing: ключи ЮKassa не заданы — используется stub-провайдер (dev)")
 	}

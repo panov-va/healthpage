@@ -68,7 +68,7 @@ func main() {
 		sender = email.LogSender{}
 	}
 
-	worker := email.NewWorker(st, sender, engine, sysSMTP, cfg.BaseURL, cfg.SubscriptionSecret, nil)
+	worker := email.NewWorker(st, sender, engine, sysSMTP, cfg.PublicURL, cfg.BaseURL, cfg.SubscriptionSecret, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	ch, err := conn.Consume(queue.WorkQueue("email"), prefetch, func(d queue.Delivery) {

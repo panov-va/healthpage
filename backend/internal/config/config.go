@@ -16,7 +16,16 @@ type Config struct {
 	DatabaseURL string // строка подключения PostgreSQL
 	RedisURL    string // подключение Redis
 	RabbitMQURL string // подключение RabbitMQ
-	BaseURL     string // базовый публичный URL сервиса
+	BaseURL     string // базовый публичный URL самого API (ссылки на API-эндпоинты — confirm и т.п.)
+
+	// PublicURL — публичный origin public-ssr (лендинг, страницы статуса, отписка, приватный
+	// доступ). В сплит-доменном проде (healthpage.ru отдельно от api.healthpage.ru) это НЕ то же
+	// самое, что BaseURL — раньше ссылки в письмах/фидах/уведомлениях ошибочно строились от
+	// BaseURL и вели на несуществующие в API маршруты.
+	PublicURL string
+	// AdminURL — публичный origin админки (React SPA). Используется для redirect после оплаты
+	// (billing checkout return_url).
+	AdminURL string
 
 	JWTSecret  string        // секрет подписи операторских access-JWT
 	AccessTTL  time.Duration // срок жизни access-токена
@@ -95,6 +104,8 @@ func Load() Config {
 		RedisURL:    env("REDIS_URL", ""),
 		RabbitMQURL: env("RABBITMQ_URL", ""),
 		BaseURL:     env("BASE_URL", "http://localhost:8080"),
+		PublicURL:   env("PUBLIC_URL", "http://localhost:3000"),
+		AdminURL:    env("ADMIN_URL", "http://localhost:5173"),
 		JWTSecret:   env("JWT_SECRET", ""),
 		AccessTTL:   envDuration("ACCESS_TTL", 15*time.Minute),
 		RefreshTTL:  envDuration("REFRESH_TTL", 30*24*time.Hour),

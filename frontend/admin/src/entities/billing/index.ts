@@ -1,4 +1,4 @@
-export { getSubscription, checkout, cancelSubscription, listPayments } from "./api";
+export { getSubscription, checkout, cancelSubscription, listPayments, confirmStubPayment } from "./api";
 export type {
   Subscription,
   Payment,

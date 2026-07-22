@@ -44,19 +44,19 @@ type Retrier interface {
 // Worker обрабатывает одно сообщение q.webhook.out: идемпотентность по Notification.id, рендер
 // payload, POST в URL (Subscriber.address), отметка sent или планирование ретрая (DESIGN §8.1).
 type Worker struct {
-	store   WorkerStore
-	poster  Poster
-	retrier Retrier
-	baseURL string
-	log     *slog.Logger
+	store     WorkerStore
+	poster    Poster
+	retrier   Retrier
+	publicURL string
+	log       *slog.Logger
 }
 
 // NewWorker собирает воркера. logger=nil → slog.Default().
-func NewWorker(st WorkerStore, poster Poster, retrier Retrier, baseURL string, logger *slog.Logger) *Worker {
+func NewWorker(st WorkerStore, poster Poster, retrier Retrier, publicURL string, logger *slog.Logger) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{store: st, poster: poster, retrier: retrier, baseURL: baseURL, log: logger}
+	return &Worker{store: st, poster: poster, retrier: retrier, publicURL: publicURL, log: logger}
 }
 
 // Process обрабатывает тело сообщения и возвращает решение по доставке.
@@ -144,7 +144,7 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) ([]byte, error) 
 		Event:    domain.EventType(msg.Event),
 		Locale:   page.DefaultLocale,
 		PageName: page.Name,
-		PageURL:  w.baseURL + "/status/" + page.Slug,
+		PageURL:  w.publicURL + "/status/" + page.Slug,
 	}
 	switch domain.EventType(msg.Event) {
 	case domain.EventIncidentNew, domain.EventIncidentUpdate:

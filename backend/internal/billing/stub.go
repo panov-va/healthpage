@@ -12,21 +12,23 @@ import (
 )
 
 // StubProvider — провайдер для dev/тестов (без реальных денег). Используется, когда не заданы
-// credentials боевого провайдера. CreatePayment выдаёт фейковую ссылку подтверждения,
+// credentials боевого провайдера. CreatePayment выдаёт ссылку на dev-страницу подтверждения,
 // ChargeRecurring всегда успешен, ParseWebhook принимает наш нормализованный JSON.
 type StubProvider struct {
-	BaseURL string // для построения confirmation-URL
+	BaseURL string // origin админки — для построения confirmation-URL (dev-страница /billing/stub-confirm)
 }
 
 // Name возвращает yookassa — чтобы dev-флоу совпадал с боевым по имени провайдера в записях.
 func (StubProvider) Name() domain.PaymentProvider { return domain.ProviderYooKassa }
 
-func (p StubProvider) CreatePayment(_ context.Context, in CreatePaymentInput) (CreatePaymentResult, error) {
+func (p StubProvider) CreatePayment(_ context.Context, _ CreatePaymentInput) (CreatePaymentResult, error) {
 	id := uuid.NewString()
-	// Confirmation-URL ведёт на dev-страницу подтверждения public-ssr (имитация виджета).
+	// Confirmation-URL ведёт на dev-страницу подтверждения в админке (имитация виджета
+	// провайдера) — независимо от in.ReturnURL (тот остаётся местом финального возврата клиента,
+	// как и для боевого провайдера).
 	return CreatePaymentResult{
 		ProviderPaymentID: id,
-		ConfirmationURL:   fmt.Sprintf("%s/billing/stub-confirm?payment=%s", in.ReturnURL, id),
+		ConfirmationURL:   fmt.Sprintf("%s/billing/stub-confirm?payment=%s", p.BaseURL, id),
 	}, nil
 }
 

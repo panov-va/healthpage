@@ -27,7 +27,7 @@ func (s *server) handleRSS(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, err)
 		return
 	}
-	body, err := feed.BuildRSS(page, incidents, maintenances, s.baseURL)
+	body, err := feed.BuildRSS(page, incidents, maintenances, s.publicURL)
 	if err != nil {
 		writeServerError(w, err)
 		return
@@ -46,7 +46,7 @@ func (s *server) handleICal(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, err)
 		return
 	}
-	body := feed.BuildICal(page, maintenances, s.baseURL, time.Now())
+	body := feed.BuildICal(page, maintenances, s.publicURL, time.Now())
 	writeRaw(w, "text/calendar; charset=utf-8", body)
 }
 

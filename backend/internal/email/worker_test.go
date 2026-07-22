@@ -80,7 +80,7 @@ func incidentMsg(t *testing.T, status domain.NotificationStatus) ([]byte, *fakeS
 }
 
 func newWorker(st WorkerStore, sender Sender, retrier Retrier) *Worker {
-	return NewWorker(st, sender, retrier, SMTP{}, "https://h", "secret", nil)
+	return NewWorker(st, sender, retrier, SMTP{}, "https://h", "https://h", "secret", nil)
 }
 
 // ── тесты ──

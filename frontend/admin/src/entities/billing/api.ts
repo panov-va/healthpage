@@ -18,3 +18,14 @@ export function listPayments(page = 1, perPage = 50): Promise<Payment[]> {
   const q = new URLSearchParams({ page: String(page), per_page: String(perPage) });
   return api.get<Payment[]>(`/billing/payments?${q.toString()}`);
 }
+
+// confirmStubPayment имитирует callback платёжного провайдера (используется только когда
+// боевой ЮKassa не настроен — CreatePayment тогда отдаёт StubProvider, см. backend/internal/
+// billing/stub.go). Публичный эндпоинт, без Bearer-токена — как и настоящий webhook провайдера.
+export function confirmStubPayment(providerPaymentID: string): Promise<void> {
+  return api.post<void>(
+    "/billing/webhook/yookassa",
+    { provider_payment_id: providerPaymentID, status: "succeeded" },
+    { auth: false },
+  );
+}

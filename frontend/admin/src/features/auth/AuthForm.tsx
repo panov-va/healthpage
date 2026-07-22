@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { login, register, useSession } from "@/entities/session";
 import { HttpError } from "@/shared/api";
@@ -8,7 +9,8 @@ type Mode = "login" | "register";
 
 export function AuthForm({ onSuccess }: { onSuccess: () => void }) {
   const { applyAuth } = useSession();
-  const [mode, setMode] = useState<Mode>("login");
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<Mode>(searchParams.get("mode") === "register" ? "register" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");

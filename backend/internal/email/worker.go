@@ -44,17 +44,18 @@ type Worker struct {
 	sender     Sender
 	retrier    Retrier
 	systemSMTP SMTP   // дефолтный отправитель (если у страницы нет своего)
-	baseURL    string // публичный origin: ссылка на страницу, confirm (API), отписку (public-ssr)
+	publicURL  string // origin public-ssr: ссылка на страницу, приватный доступ, отписку
+	apiURL     string // origin самого API: ссылка подтверждения подписки (/api/v1/subscribe/confirm)
 	secret     string // секрет HMAC-токена отписки
 	log        *slog.Logger
 }
 
 // NewWorker собирает воркера. logger=nil → slog.Default().
-func NewWorker(st WorkerStore, sender Sender, retrier Retrier, systemSMTP SMTP, baseURL, secret string, logger *slog.Logger) *Worker {
+func NewWorker(st WorkerStore, sender Sender, retrier Retrier, systemSMTP SMTP, publicURL, apiURL, secret string, logger *slog.Logger) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{store: st, sender: sender, retrier: retrier, systemSMTP: systemSMTP, baseURL: baseURL, secret: secret, log: logger}
+	return &Worker{store: st, sender: sender, retrier: retrier, systemSMTP: systemSMTP, publicURL: publicURL, apiURL: apiURL, secret: secret, log: logger}
 }
 
 // Process обрабатывает тело сообщения и возвращает решение по доставке.
@@ -160,7 +161,7 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, 
 		Event:    domain.EventType(msg.Event),
 		Locale:   page.DefaultLocale,
 		PageName: page.Name,
-		PageURL:  w.baseURL + "/status/" + page.Slug,
+		PageURL:  w.publicURL + "/status/" + page.Slug,
 	}
 
 	switch domain.EventType(msg.Event) {
@@ -169,14 +170,14 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, 
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
 			return Content{}, SMTP{}, fmt.Errorf("email: confirm payload: %w", err)
 		}
-		in.ConfirmURL = w.baseURL + "/api/v1/subscribe/confirm?token=" + url.QueryEscape(p.ConfirmToken)
+		in.ConfirmURL = w.apiURL + "/api/v1/subscribe/confirm?token=" + url.QueryEscape(p.ConfirmToken)
 	case domain.EventAccessLink:
 		var p notify.AccessLinkPayload
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
 			return Content{}, SMTP{}, fmt.Errorf("email: access link payload: %w", err)
 		}
 		// Ссылка ведёт на public-ssr, который обменяет токен на cookie доступа (как пароль 4.2).
-		in.AccessURL = w.baseURL + "/status/" + page.Slug + "/access/verify?token=" + url.QueryEscape(p.Token)
+		in.AccessURL = w.publicURL + "/status/" + page.Slug + "/access/verify?token=" + url.QueryEscape(p.Token)
 	case domain.EventIncidentNew, domain.EventIncidentUpdate:
 		var p notify.IncidentPayload
 		if err := json.Unmarshal(msg.Payload, &p); err != nil {
@@ -202,13 +203,13 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (Content, SMTP, 
 
 // unsubscribeURL строит ссылку отписки с HMAC-токеном (пустая при некорректном subscriber_id).
 // Ведёт на публичную страницу отписки public-ssr (`/unsubscribe`, этап 3.10) — она и выполняет
-// отписку через backend и показывает подтверждение. baseURL — публичный origin (как для /status).
+// отписку через backend и показывает подтверждение.
 func (w *Worker) unsubscribeURL(subscriberID string) string {
 	sid, err := uuid.Parse(subscriberID)
 	if err != nil {
 		return ""
 	}
-	return w.baseURL + "/unsubscribe?token=" + url.QueryEscape(subscription.UnsubscribeToken(w.secret, sid))
+	return w.publicURL + "/unsubscribe?token=" + url.QueryEscape(subscription.UnsubscribeToken(w.secret, sid))
 }
 
 // effectiveSMTP выбирает SMTP страницы (если задан её smtp_config), иначе системный.

@@ -63,8 +63,8 @@ func main() {
 	defer func() { _ = pub.Close() }()
 	engine := notify.New(st, pub, nil)
 
-	slackWorker := slack.NewWorker(st, slack.NewClient(nil), engine, cfg.BaseURL, nil)
-	outWorker := webhookout.NewWorker(st, webhookout.NewClient(nil), engine, cfg.BaseURL, nil)
+	slackWorker := slack.NewWorker(st, slack.NewClient(nil), engine, cfg.PublicURL, nil)
+	outWorker := webhookout.NewWorker(st, webhookout.NewClient(nil), engine, cfg.PublicURL, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

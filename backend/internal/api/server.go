@@ -33,7 +33,9 @@ type Deps struct {
 	Store           *store.Store
 	Notifier        *notify.Engine   // движок уведомлений; nil — рассылка отключена (RabbitMQ недоступен)
 	SubSecret       string           // секрет HMAC-токенов отписки (должен совпадать с worker-email)
-	BaseURL         string           // базовый URL для ссылок в фидах/письмах
+	BaseURL         string           // базовый URL самого API
+	PublicURL       string           // origin public-ssr — ссылки в фидах (RSS/iCal) на страницы статуса
+	AdminURL        string           // origin админки — redirect после оплаты (billing checkout)
 	SlackOAuth      *slack.OAuth     // OAuth-клиент Slack; nil — подписка Slack выключена
 	Billing         *billing.Service // сервис биллинга (этап 6); nil — эндпоинты /billing/* отвечают 503
 	ImportPublisher ImportPublisher  // публикатор задач импорта (этап 7.5); nil — /import отвечает 503
@@ -57,6 +59,8 @@ type server struct {
 	notifier        *notify.Engine
 	subSecret       string
 	baseURL         string
+	publicURL       string
+	adminURL        string
 	slackOAuth      *slack.OAuth
 	billing         *billing.Service
 	importPublisher ImportPublisher
@@ -69,7 +73,7 @@ type server struct {
 
 // NewRouter собирает корневой роутер: служебный /healthz и /api/v1/* (auth, управление страницами/компонентами).
 func NewRouter(d Deps) http.Handler {
-	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, slackOAuth: d.SlackOAuth, billing: d.Billing, importPublisher: d.ImportPublisher, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver, dokploy: d.Dokploy}
+	s := &server{auth: d.Auth, store: d.Store, notifier: d.Notifier, subSecret: d.SubSecret, baseURL: d.BaseURL, publicURL: d.PublicURL, adminURL: d.AdminURL, slackOAuth: d.SlackOAuth, billing: d.Billing, importPublisher: d.ImportPublisher, prod: d.Prod, refreshTTL: d.RefreshTTL, cnameTarget: d.CNAMETarget, cnameResolver: d.CNAMEResolver, dokploy: d.Dokploy}
 	if s.cnameResolver == nil {
 		s.cnameResolver = net.DefaultResolver.LookupCNAME
 	}

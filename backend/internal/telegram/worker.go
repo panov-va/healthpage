@@ -45,19 +45,19 @@ type Retrier interface {
 // Worker обрабатывает одно сообщение q.telegram: идемпотентность по Notification.id, рендер,
 // отправка через Bot API, отметка sent или планирование ретрая (DESIGN §8.1).
 type Worker struct {
-	store   WorkerStore
-	sender  Sender
-	retrier Retrier
-	baseURL string // для ссылки на публичную страницу
-	log     *slog.Logger
+	store     WorkerStore
+	sender    Sender
+	retrier   Retrier
+	publicURL string // для ссылки на публичную страницу
+	log       *slog.Logger
 }
 
 // NewWorker собирает воркера. logger=nil → slog.Default().
-func NewWorker(st WorkerStore, sender Sender, retrier Retrier, baseURL string, logger *slog.Logger) *Worker {
+func NewWorker(st WorkerStore, sender Sender, retrier Retrier, publicURL string, logger *slog.Logger) *Worker {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Worker{store: st, sender: sender, retrier: retrier, baseURL: baseURL, log: logger}
+	return &Worker{store: st, sender: sender, retrier: retrier, publicURL: publicURL, log: logger}
 }
 
 // Process обрабатывает тело сообщения и возвращает решение по доставке.
@@ -151,7 +151,7 @@ func (w *Worker) build(ctx context.Context, msg notify.Message) (string, error) 
 		Event:    domain.EventType(msg.Event),
 		Locale:   page.DefaultLocale,
 		PageName: page.Name,
-		PageURL:  w.baseURL + "/status/" + page.Slug,
+		PageURL:  w.publicURL + "/status/" + page.Slug,
 	}
 	switch domain.EventType(msg.Event) {
 	case domain.EventIncidentNew, domain.EventIncidentUpdate:

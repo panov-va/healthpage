@@ -138,8 +138,8 @@ func (s *server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_request", "недопустимый billing_period (monthly|yearly)")
 		return
 	}
-	// Куда вернуть клиента после оплаты — публичная страница биллинга админки.
-	returnURL := s.baseURL + "/billing"
+	// Куда вернуть клиента после оплаты — страница биллинга админки.
+	returnURL := s.adminURL + "/billing"
 	res, err := s.billing.Checkout(r.Context(), acc.ID, plan, period, returnURL)
 	if err != nil {
 		if errors.Is(err, billing.ErrInvalidPlan) {

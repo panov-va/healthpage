@@ -98,6 +98,18 @@ rss/ical в JSX. **Это отдельная задача (виджет подп
     НЕ менялся (внутренняя реализация доставки).
   - **Дальше:** прописать `UNISENDER_GO_API_KEY` в `worker-email` на Dokploy (ключ из UniSender Go →
     раздел Web API, отдельный от SMTP-логина/пароля) и передеплоить; повторить тестовую отправку.
+- 2026-07-22 — **UniSender Go API задеплоен, поймана и исправлена вторая ошибка: неверный хост
+  Web API.** Человек прописал `UNISENDER_GO_API_KEY`, закоммитил/запушил/задеплоил — таймаут-фикс
+  сработал сразу (оба зависших с прошлой попытки письма быстро переобработались вместо зависания),
+  но обе отправки упали с `unisender error: user not found`. Разобрался: у UniSender Go **нет одного
+  общего хоста API для всех аккаунтов** — их несколько дата-центров (go1/go2/...), и дефолтный
+  `goapi.unisender.ru` (как в общей документации) отвечает "user not found" (код 114) для аккаунтов
+  на другом дата-центре. У этого аккаунта дата-центр **go2** (виден в его же SMTP-хосте
+  `smtp.go2.unisender.ru`). **Исправлено:** дефолтный `uniSenderGoEndpoint` →
+  `https://go2.unisender.ru/ru/transactional/api/v1/email/send.json`; плюс добавлен опциональный
+  override `UNISENDER_GO_API_URL` (config+`NewUniSenderGoSender(apiKey, apiURL)`) на случай переезда
+  аккаунта на другой дата-центр в будущем. build/test/lint зелёные. **Ждёт коммита + повторного
+  деплоя + ещё одной тестовой отправки.**
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ ИМПОРТА] — частично снят (2026-07-22):** схема StatusPal API v2
 (`internal/importer/statuspal.go`) сверена на живом read-only ключе клиента (services/incidents/
 subscribers — реальные обёртки, дерево через children_ids, UUID-подписчики, отсутствие /maintenances

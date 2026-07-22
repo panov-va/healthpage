@@ -68,7 +68,7 @@ func main() {
 	var systemSender email.Sender
 	switch {
 	case cfg.UniSenderGoAPIKey != "":
-		systemSender = email.NewUniSenderGoSender(cfg.UniSenderGoAPIKey)
+		systemSender = email.NewUniSenderGoSender(cfg.UniSenderGoAPIKey, cfg.UniSenderGoAPIURL)
 	case !sysSMTP.IsZero():
 		systemSender = email.SMTPSender{}
 	default:

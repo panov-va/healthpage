@@ -10,7 +10,11 @@ import (
 )
 
 // uniSenderGoEndpoint — Web API UniSender Go (HTTPS:443, https://godocs.unisender.ru/web-api-ref).
-const uniSenderGoEndpoint = "https://goapi.unisender.ru/ru/transactional/api/v1/email/send.json"
+// Хост зависит от дата-центра аккаунта (go1/go2/...) — единого для всех "goapi.unisender.ru" нет
+// (найдено 2026-07-22: с ним API отвечал "user not found", код 114). У этого аккаунта дата-центр —
+// go2 (виден в SMTP-хосте smtp.go2.unisender.ru); переопределяется UniSenderGoSender.Endpoint или
+// конфигом UNISENDER_GO_API_URL, если аккаунт когда-нибудь переедет на другой дата-центр.
+const uniSenderGoEndpoint = "https://go2.unisender.ru/ru/transactional/api/v1/email/send.json"
 
 // UniSenderGoSender доставляет письма через HTTP Web API UniSender Go вместо SMTP — решение
 // 2026-07-22, когда выяснилось, что у VPS-провайдера прод-сервера исходящие SMTP-порты (587/465)
@@ -23,10 +27,14 @@ type UniSenderGoSender struct {
 	HTTP     *http.Client
 }
 
-// NewUniSenderGoSender создаёт отправителя с дефолтным HTTP-клиентом (таймаут 15с) и реальным
-// эндпоинтом UniSender Go.
-func NewUniSenderGoSender(apiKey string) *UniSenderGoSender {
-	return &UniSenderGoSender{APIKey: apiKey, Endpoint: uniSenderGoEndpoint, HTTP: &http.Client{Timeout: 15 * time.Second}}
+// NewUniSenderGoSender создаёт отправителя с дефолтным HTTP-клиентом (таймаут 15с). apiURL пустой
+// → дефолт пакета (дата-центр go2, см. uniSenderGoEndpoint); передайте непустой, если аккаунт на
+// другом дата-центре UniSender Go (UNISENDER_GO_API_URL).
+func NewUniSenderGoSender(apiKey, apiURL string) *UniSenderGoSender {
+	if apiURL == "" {
+		apiURL = uniSenderGoEndpoint
+	}
+	return &UniSenderGoSender{APIKey: apiKey, Endpoint: apiURL, HTTP: &http.Client{Timeout: 15 * time.Second}}
 }
 
 func (s *UniSenderGoSender) endpoint() string {

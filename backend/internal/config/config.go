@@ -50,6 +50,9 @@ type Config struct {
 	// для него всегда используется настоящий SMTP-протокол (SMTPSender), т.к. мы не можем провести
 	// чужой почтовый сервер через свой аккаунт UniSender Go.
 	UniSenderGoAPIKey string
+	// UniSenderGoAPIURL переопределяет эндпоинт Web API (дата-центр аккаунта — go1/go2/...,
+	// см. комментарий в internal/email/unisender.go). Пусто → дефолт пакета (go2, текущий аккаунт).
+	UniSenderGoAPIURL string
 
 	// TelegramBotToken — токен бота от @BotFather (worker-telegram). Если пуст — воркер не
 	// стартует (бот без токена бессмыслен).
@@ -128,6 +131,7 @@ func Load() Config {
 		SMTPTLS:      env("SMTP_TLS", "") == "true",
 
 		UniSenderGoAPIKey: env("UNISENDER_GO_API_KEY", ""),
+		UniSenderGoAPIURL: env("UNISENDER_GO_API_URL", ""),
 
 		TelegramBotToken: env("TELEGRAM_BOT_TOKEN", ""),
 

@@ -53,6 +53,13 @@ type uniSenderGoMessage struct {
 	Body       uniSenderGoBody        `json:"body"`
 	Subject    string                 `json:"subject"`
 	FromEmail  string                 `json:"from_email"`
+	// TrackLinks/TrackRead выключены явно (API включает их по умолчанию, значение 1) — открытие/
+	// клики по служебным письмам не отслеживаем, а включённый трекинг требует настроенного
+	// tracking-домена в аккаунте UniSender Go (найдено 2026-07-22: без него API отвечает "Custom
+	// backend domain or tracking domain required for sending", даже когда сам домен отправителя
+	// уже верифицирован для SPF/DKIM — это разные вещи).
+	TrackLinks int `json:"track_links"`
+	TrackRead  int `json:"track_read"`
 }
 
 type uniSenderGoRecipient struct {

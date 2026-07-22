@@ -108,8 +108,20 @@ rss/ical в JSX. **Это отдельная задача (виджет подп
   `smtp.go2.unisender.ru`). **Исправлено:** дефолтный `uniSenderGoEndpoint` →
   `https://go2.unisender.ru/ru/transactional/api/v1/email/send.json`; плюс добавлен опциональный
   override `UNISENDER_GO_API_URL` (config+`NewUniSenderGoSender(apiKey, apiURL)`) на случай переезда
-  аккаунта на другой дата-центр в будущем. build/test/lint зелёные. **Ждёт коммита + повторного
-  деплоя + ещё одной тестовой отправки.**
+  аккаунта на другой дата-центр в будущем. build/test/lint зелёные.
+- 2026-07-22 — **Третья и последняя находка: правильный ключ = пароль SMTP, плюс tracking-домен.**
+  После фикса хоста (go2) API вернул подробную ошибку с готовым ответом: "Api key mismatch ...
+  Users api key: '67m...'" — этот "правильный" ключ совпал с уже сохранённым `SMTP_PASSWORD`
+  (у аккаунта единый секрет на SMTP и Web API). Человек прописал его в `UNISENDER_GO_API_KEY` —
+  аутентификация прошла. Следующая ошибка: **"Custom backend domain or tracking domain required for
+  sending"** — не про SPF/DKIM (человек подтвердил: домен уже верифицирован для отправки), а про
+  ОТДЕЛЬНУЮ фичу — tracking-домен для отслеживания открытий/кликов, которую API включает по
+  умолчанию (`track_links`/`track_read` дефолт 1) и требует настроенного CNAME для него, даже если
+  сам домен отправителя уже ок. **Исправлено:** `uniSenderGoMessage` явно передаёт `track_links: 0,
+  track_read: 0` — нам open/click-трекинг на служебных письмах не нужен, и это снимает зависимость
+  от ещё одной DNS-настройки. Юнит-тест `TestUniSenderGoSenderHappyPath` расширен проверкой этих
+  полей. build/test/vet/gofmt/golangci-lint зелёные. **Ждёт коммита + деплоя + финальной проверки
+  реальной доставки.**
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ ИМПОРТА] — частично снят (2026-07-22):** схема StatusPal API v2
 (`internal/importer/statuspal.go`) сверена на живом read-only ключе клиента (services/incidents/
 subscribers — реальные обёртки, дерево через children_ids, UUID-подписчики, отсутствие /maintenances

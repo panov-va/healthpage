@@ -43,6 +43,12 @@ func TestUniSenderGoSenderHappyPath(t *testing.T) {
 	if gotBody.Message.FromEmail != "status@healthpage.ru" {
 		t.Fatalf("from_email = %q", gotBody.Message.FromEmail)
 	}
+	// track_links/track_read должны быть явно выключены (0) — API включает их по умолчанию (1),
+	// а это требует настроенного tracking-домена в аккаунте, которого может не быть (найдено
+	// 2026-07-22: без этого сервер отвечает "Custom backend domain or tracking domain required").
+	if gotBody.Message.TrackLinks != 0 || gotBody.Message.TrackRead != 0 {
+		t.Fatalf("track_links/track_read должны быть 0, получили %+v", gotBody.Message)
+	}
 	if gotBody.Message.Subject != "Subj" || gotBody.Message.Body.HTML != "<p>html</p>" || gotBody.Message.Body.PlainText != "text" {
 		t.Fatalf("message body = %+v", gotBody.Message)
 	}

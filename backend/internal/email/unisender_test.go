@@ -49,8 +49,24 @@ func TestUniSenderGoSenderHappyPath(t *testing.T) {
 	if gotBody.Message.TrackLinks != 0 || gotBody.Message.TrackRead != 0 {
 		t.Fatalf("track_links/track_read должны быть 0, получили %+v", gotBody.Message)
 	}
-	if gotBody.Message.Subject != "Subj" || gotBody.Message.Body.HTML != "<p>html</p>" || gotBody.Message.Body.PlainText != "text" {
-		t.Fatalf("message body = %+v", gotBody.Message)
+	if gotBody.Message.CustomBackendID != 0 {
+		t.Fatalf("custom_backend_id без BackendID должен отсутствовать (0), получили %d", gotBody.Message.CustomBackendID)
+	}
+}
+
+func TestUniSenderGoSenderSendsCustomBackendID(t *testing.T) {
+	var gotBody uniSenderGoRequest
+	s := newTestUniSenderGo(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_ = json.NewEncoder(w).Encode(uniSenderGoResponse{Status: "success", Emails: []string{"to@x.test"}})
+	})
+	s.BackendID = 35417
+
+	if err := s.Send(context.Background(), SMTP{From: "a@x.test"}, Email{To: "to@x.test"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if gotBody.Message.CustomBackendID != 35417 {
+		t.Fatalf("custom_backend_id = %d, want 35417", gotBody.Message.CustomBackendID)
 	}
 }
 

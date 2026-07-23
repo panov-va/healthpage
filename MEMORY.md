@@ -120,8 +120,18 @@ rss/ical в JSX. **Это отдельная задача (виджет подп
   сам домен отправителя уже ок. **Исправлено:** `uniSenderGoMessage` явно передаёт `track_links: 0,
   track_read: 0` — нам open/click-трекинг на служебных письмах не нужен, и это снимает зависимость
   от ещё одной DNS-настройки. Юнит-тест `TestUniSenderGoSenderHappyPath` расширен проверкой этих
-  полей. build/test/vet/gofmt/golangci-lint зелёные. **Ждёт коммита + деплоя + финальной проверки
-  реальной доставки.**
+  полей. build/test/vet/gofmt/golangci-lint зелёные.
+- 2026-07-23 — **Четвёртая находка: нужен `custom_backend_id` явно.** После деплоя track_links-фикса
+  ошибка "Custom backend domain or tracking domain required for sending" осталась той же — дело было
+  не в трекинге. По документации `email/send`: `custom_backend_id` — id backend-домена, через
+  который шлётся письмо; если не передан, используется дефолтный backend-домен проекта — а у этого
+  проекта дефолтный backend-домен, судя по всему, не назначен (отдельная настройка от SPF/DKIM,
+  которую человек уже подтвердил). Человек нашёл id в личном кабинете UniSender Go: **35417**.
+  **Исправлено:** `uniSenderGoMessage.CustomBackendID` (`custom_backend_id,omitempty`);
+  `UniSenderGoSender.BackendID` + `NewUniSenderGoSender(apiKey, apiURL, backendID)`; config
+  `UniSenderGoBackendID` (env `UNISENDER_GO_BACKEND_ID`). Юнит-тест
+  `TestUniSenderGoSenderSendsCustomBackendID`. build/test/vet/gofmt/golangci-lint зелёные.
+  **Ждёт коммита + `UNISENDER_GO_BACKEND_ID=35417` в Dokploy + деплоя + финальной проверки доставки.**
 **[ВЕРНУТЬСЯ ПЕРЕД ЗАПУСКОМ ИМПОРТА] — частично снят (2026-07-22):** схема StatusPal API v2
 (`internal/importer/statuspal.go`) сверена на живом read-only ключе клиента (services/incidents/
 subscribers — реальные обёртки, дерево через children_ids, UUID-подписчики, отсутствие /maintenances
